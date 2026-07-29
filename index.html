@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>비상대피로 도면 편집기</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:"Malgun Gothic","맑은 고딕",system-ui,sans-serif;background:#eef1f6;color:#1f2430;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+  header{background:#1f2937;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  header h1{font-size:16px;font-weight:700;}
+  header .meta{display:flex;gap:8px;align-items:center;font-size:12.5px;color:#c7cede;flex-wrap:wrap;}
+  header .meta input{font:inherit;font-size:12.5px;padding:5px 8px;border-radius:7px;border:1px solid #3a475c;background:#111827;color:#fff;}
+  header .meta input.b{width:150px;} header .meta input.s{width:70px;}
+  .wrap{flex:1;display:flex;min-height:0;}
+
+  .tools{width:186px;flex:none;background:#fff;border-right:1px solid #dde2ea;padding:12px;overflow-y:auto;}
+  .tools h2{font-size:11px;letter-spacing:.4px;color:#8a93a6;text-transform:uppercase;margin:12px 4px 7px;}
+  .tools h2:first-child{margin-top:0;}
+  .tbtn{width:100%;display:flex;align-items:center;gap:9px;font:inherit;font-size:13.5px;color:#26303f;
+        padding:9px 10px;border:1px solid #e2e7ef;border-radius:9px;background:#f7f9fc;cursor:pointer;margin-bottom:6px;transition:.12s;text-align:left;}
+  .tbtn:hover{background:#eef3fb;border-color:#c7d3e6;}
+  .tbtn.active{background:#2563eb;color:#fff;border-color:#2563eb;box-shadow:0 3px 10px rgba(37,99,235,.35);}
+  .tbtn .ic{width:20px;text-align:center;font-size:15px;}
+  .sym-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .sym{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:#394353;
+       padding:8px 4px;border:1px solid #e2e7ef;border-radius:9px;background:#f7f9fc;cursor:pointer;}
+  .sym:hover{background:#eef3fb;} .sym.active{outline:2px solid #2563eb;background:#eaf1ff;}
+  .sym canvas{width:34px;height:34px;}
+
+  .stagewrap{flex:1;min-width:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:22px;background:#dfe4ec;
+             background-image:linear-gradient(#0000000a 1px,transparent 1px),linear-gradient(90deg,#0000000a 1px,transparent 1px);background-size:24px 24px;}
+  #board{background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:4px;cursor:crosshair;max-width:100%;height:auto;}
+
+  .side{width:210px;flex:none;background:#fff;border-left:1px solid #dde2ea;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+  .side h2{font-size:11px;letter-spacing:.4px;color:#8a93a6;text-transform:uppercase;margin:6px 2px 2px;}
+  .abtn{font:inherit;font-size:13px;padding:9px;border-radius:9px;border:1px solid #e2e7ef;background:#f7f9fc;cursor:pointer;transition:.12s;}
+  .abtn:hover{background:#eef3fb;}
+  .abtn.pri{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border-color:transparent;font-weight:700;}
+  .abtn.warn{color:#b42318;}
+  .hint{font-size:11.5px;color:#7a8496;line-height:1.65;background:#f4f7fb;border:1px solid #e6ebf3;border-radius:9px;padding:9px 10px;}
+  .row2{display:flex;gap:6px;} .row2 .abtn{flex:1;}
+  input[type=file]{display:none;}
+  select,.side input[type=text]{font:inherit;font-size:13px;padding:8px;border-radius:8px;border:1px solid #d9e0ea;width:100%;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏭 비상대피로 도면 편집기</h1>
+  <div class="meta">
+    <input class="b" id="mBld" placeholder="건물/사업장명" value="INTS">
+    <input class="s" id="mFloor" placeholder="층" value="1F">
+    <input class="s" id="mDate" placeholder="작성일" value="">
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- left tools -->
+  <div class="tools">
+    <h2>도구</h2>
+    <button class="tbtn active" data-mode="select"><span class="ic">🖱</span>선택·이동</button>
+    <button class="tbtn" data-mode="wall"><span class="ic">🧱</span>벽 그리기</button>
+    <button class="tbtn" data-mode="route"><span class="ic">➡️</span>대피경로</button>
+    <button class="tbtn" data-mode="text"><span class="ic">🔤</span>글자</button>
+    <button class="tbtn" data-mode="erase"><span class="ic">🧽</span>지우개</button>
+
+    <h2>안전 심볼 (클릭 후 도면에 배치)</h2>
+    <div class="sym-grid" id="symGrid"></div>
+  </div>
+
+  <!-- board -->
+  <div class="stagewrap">
+    <canvas id="board" width="1240" height="820"></canvas>
+  </div>
+
+  <!-- right actions -->
+  <div class="side">
+    <h2>배경 도면</h2>
+    <button class="abtn" onclick="document.getElementById('bgFile').click()">🖼 바닥 도면 이미지 넣기</button>
+    <input type="file" id="bgFile" accept="image/*">
+    <button class="abtn" id="clearBg">배경 지우기</button>
+
+    <h2>글자 입력</h2>
+    <input type="text" id="textInput" placeholder="예: 제1작업장 / 계단">
+
+    <h2>편집</h2>
+    <div class="row2">
+      <button class="abtn" id="undo">↶ 되돌리기</button>
+      <button class="abtn" id="finishRoute">경로 끝내기</button>
+    </div>
+    <button class="abtn warn" id="clearAll">전체 초기화</button>
+
+    <h2>내보내기</h2>
+    <button class="abtn pri" id="exportPng">🖼 PNG 이미지로 저장</button>
+    <button class="abtn" id="print">🖨 인쇄 / PDF</button>
+    <div class="row2">
+      <button class="abtn" id="saveJson">💾 저장</button>
+      <button class="abtn" onclick="document.getElementById('loadFile').click()">📂 불러오기</button>
+    </div>
+    <input type="file" id="loadFile" accept="application/json,.json">
+
+    <div class="hint" id="hint">배치할 도구를 왼쪽에서 고르세요.<br>• 벽/경로 : 클릭으로 점을 이어 그리고, 더블클릭이나 “경로 끝내기”로 마무리<br>• 심볼 : 고른 뒤 도면을 클릭<br>• 선택 도구로 심볼을 끌어 이동</div>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById('board'), ctx=cv.getContext('2d');
+const W=cv.width, H=cv.height;
+const $=id=>document.getElementById(id);
+
+// set today
+(function(){const d=new Date();$('mDate').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;})();
+
+// ---------- symbol definitions ----------
+const SYMBOLS={
+  exit:      {label:'비상구', color:'#16a34a'},
+  fire_ext:  {label:'소화기', color:'#dc2626'},
+  hydrant:   {label:'소화전', color:'#dc2626'},
+  alarm:     {label:'발신기', color:'#dc2626'},
+  descend:   {label:'완강기', color:'#ea580c'},
+  firstaid:  {label:'구급함', color:'#16a34a'},
+  assembly:  {label:'대피장소', color:'#16a34a'},
+  here:      {label:'현위치', color:'#2563eb'},
+};
+
+// draw one symbol pictogram centered at (x,y) with box size S. `withLabel` draws korean caption.
+function drawSymbol(g,type,x,y,S,withLabel){
+  const c=SYMBOLS[type].color;
+  const r=S*0.16;
+  g.save();
+  // box
+  g.fillStyle=c; roundRect(g,x-S/2,y-S/2,S,S,r); g.fill();
+  g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineWidth=Math.max(2,S*0.06);
+  g.lineJoin='round'; g.lineCap='round';
+  const u=S/48; // unit
+  g.translate(x,y);
+  if(type==='exit'){
+    // running person + door + arrow
+    g.beginPath(); g.arc(-9*u,-10*u,4*u,0,7); g.fill();               // head
+    g.lineWidth=3.2*u; g.beginPath();
+    g.moveTo(-9*u,-5*u); g.lineTo(-9*u,5*u);                          // torso
+    g.moveTo(-9*u,-2*u); g.lineTo(-3*u,-4*u);                         // arm
+    g.moveTo(-9*u,-2*u); g.lineTo(-14*u,1*u);                         // arm2
+    g.moveTo(-9*u,5*u);  g.lineTo(-3*u,11*u);                         // leg
+    g.moveTo(-9*u,5*u);  g.lineTo(-14*u,12*u);                        // leg2
+    g.stroke();
+    // door frame
+    g.lineWidth=2.4*u; g.strokeRect(4*u,-13*u,12*u,26*u);
+    // arrow
+    g.lineWidth=3*u; g.beginPath(); g.moveTo(2*u,0); g.lineTo(11*u,0); g.stroke();
+    g.beginPath(); g.moveTo(11*u,0); g.lineTo(7*u,-4*u); g.lineTo(7*u,4*u); g.closePath(); g.fill();
+  } else if(type==='fire_ext'){
+    g.lineWidth=2.4*u;
+    roundRectPath(g,-6*u,-6*u,12*u,18*u,3*u); g.fill();               // body
+    g.fillRect(-2.4*u,-12*u,4.8*u,6*u);                              // neck
+    g.beginPath(); g.moveTo(2.4*u,-10*u); g.lineTo(11*u,-13*u); g.stroke(); // hose
+    g.beginPath(); g.arc(12*u,-13*u,2.2*u,0,7); g.fill();
+  } else if(type==='hydrant'){
+    // reel + F
+    g.lineWidth=2.6*u; g.beginPath(); g.arc(-4*u,0,8*u,0,7); g.stroke();
+    g.beginPath(); g.arc(-4*u,0,2.4*u,0,7); g.fill();
+    g.font=`bold ${13*u}px sans-serif`; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('소',9*u,-6*u); g.fillText('전',9*u,8*u);
+  } else if(type==='alarm'){
+    // bell
+    g.lineWidth=2.6*u; g.beginPath();
+    g.moveTo(-9*u,7*u); g.quadraticCurveTo(-9*u,-9*u,0,-9*u);
+    g.quadraticCurveTo(9*u,-9*u,9*u,7*u); g.closePath(); g.stroke();
+    g.beginPath(); g.moveTo(-11*u,7*u); g.lineTo(11*u,7*u); g.stroke();
+    g.beginPath(); g.arc(0,11*u,2.6*u,0,7); g.fill();
+  } else if(type==='descend'){
+    // rope + person
+    g.lineWidth=2.4*u; g.beginPath(); g.moveTo(0,-15*u); g.lineTo(0,14*u); g.stroke();
+    g.beginPath(); g.arc(0,-8*u,3.6*u,0,7); g.fill();
+    g.lineWidth=3*u; g.beginPath();
+    g.moveTo(0,-4*u); g.lineTo(0,6*u);
+    g.moveTo(0,-1*u); g.lineTo(7*u,-3*u);
+    g.moveTo(0,6*u); g.lineTo(6*u,13*u); g.moveTo(0,6*u); g.lineTo(-6*u,13*u);
+    g.stroke();
+  } else if(type==='firstaid'){
+    // cross
+    g.fillRect(-3.5*u,-12*u,7*u,24*u); g.fillRect(-12*u,-3.5*u,24*u,7*u);
+  } else if(type==='assembly'){
+    // arrows to center + dot
+    g.beginPath(); g.arc(0,0,3.2*u,0,7); g.fill();
+    const arr=(ax,ay,bx,by)=>{g.lineWidth=2.6*u;g.beginPath();g.moveTo(ax,ay);g.lineTo(bx,by);g.stroke();
+      const an=Math.atan2(by-ay,bx-ax); g.beginPath();
+      g.moveTo(bx,by); g.lineTo(bx-6*u*Math.cos(an-0.5),by-6*u*Math.sin(an-0.5));
+      g.lineTo(bx-6*u*Math.cos(an+0.5),by-6*u*Math.sin(an+0.5)); g.closePath(); g.fill();};
+    arr(-14*u,-14*u,-6*u,-6*u); arr(14*u,-14*u,6*u,-6*u);
+    arr(-14*u,14*u,-6*u,6*u); arr(14*u,14*u,6*u,6*u);
+  } else if(type==='here'){
+    // star
+    g.beginPath();
+    for(let i=0;i<10;i++){const ang=-Math.PI/2+i*Math.PI/5;const rr=(i%2?5:12)*u;
+      const px=Math.cos(ang)*rr,py=Math.sin(ang)*rr; i?g.lineTo(px,py):g.moveTo(px,py);}
+    g.closePath(); g.fill();
+  }
+  g.restore();
+  if(withLabel){
+    g.save();
+    const lbl=SYMBOLS[type].label; g.font='bold 13px "Malgun Gothic",sans-serif';
+    const tw=g.measureText(lbl).width, pad=5, ly=y+S/2+4;
+    g.fillStyle='#fff'; g.strokeStyle=c; g.lineWidth=1.5;
+    roundRect(g,x-tw/2-pad,ly,tw+pad*2,18,4); g.fill(); g.stroke();
+    g.fillStyle=c; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(lbl,x,ly+9); g.restore();
+  }
+}
+function roundRect(g,x,y,w,h,r){roundRectPath(g,x,y,w,h,r);}
+function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
+
+// build symbol palette
+const symGrid=$('symGrid');
+Object.keys(SYMBOLS).forEach(type=>{
+  const d=document.createElement('div'); d.className='sym'; d.dataset.type=type;
+  const sc=document.createElement('canvas'); sc.width=44;sc.height=44;
+  drawSymbol(sc.getContext('2d'),type,22,22,32,false);
+  d.appendChild(sc);
+  const sp=document.createElement('span'); sp.textContent=SYMBOLS[type].label; d.appendChild(sp);
+  d.addEventListener('click',()=>{ setMode('symbol'); currentSymbol=type;
+    document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); d.classList.add('active');
+    document.querySelectorAll('.tbtn').forEach(x=>x.classList.remove('active'));
+    $('hint').innerHTML='도면을 클릭해 <b>'+SYMBOLS[type].label+'</b> 배치'; });
+  symGrid.appendChild(d);
+});
+
+// ---------- state ----------
+let state={walls:[],routes:[],symbols:[],texts:[]};
+let bgImg=null, bgData=null;
+let mode='select', currentSymbol=null;
+let draft=null;              // in-progress wall/route points
+let sel=null, dragOff=null;  // selected symbol/text for moving
+let history=[];
+
+function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
+function setMode(m){ mode=m; draft=null; sel=null;
+  document.querySelectorAll('.tbtn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  if(m!=='symbol'){ document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); currentSymbol=null; }
+  cv.style.cursor = (m==='select')?'move':(m==='erase')?'not-allowed':'crosshair';
+  draw();
+}
+document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
+  setMode(b.dataset.mode);
+  const tips={select:'심볼·글자를 끌어서 이동. 지우려면 지우개.',wall:'클릭으로 벽 꼭짓점을 잇고 더블클릭으로 마무리.',
+    route:'클릭으로 대피 경로를 잇고 더블클릭/“경로 끝내기”로 마무리 → 초록 화살표.',text:'오른쪽에 글자를 입력한 뒤 도면을 클릭.',erase:'지울 대상을 클릭.'};
+  $('hint').textContent=tips[b.dataset.mode]||'';
+}));
+
+// ---------- coordinate ----------
+function pos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*W, y:(e.clientY-r.top)/r.height*H}; }
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function segDist(p,a,b){const l2=(a.x-b.x)**2+(a.y-b.y)**2; if(!l2)return dist(p,a);
+  let t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/l2; t=Math.max(0,Math.min(1,t));
+  return dist(p,{x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)});}
+
+// ---------- interactions ----------
+cv.addEventListener('mousedown',e=>{
+  const p=pos(e);
+  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
+  if(mode==='text'){ const t=$('textInput').value.trim()||'글자'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
+  if(mode==='wall'||mode==='route'){ if(!draft)draft={type:mode,points:[p]}; else draft.points.push({...p}); draw(); return; }
+  if(mode==='erase'){ eraseAt(p); return; }
+  if(mode==='select'){
+    // pick symbol first, then text
+    for(let i=state.symbols.length-1;i>=0;i--){ if(dist(p,state.symbols[i])<26){ sel={kind:'sym',i}; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); return; } }
+    for(let i=state.texts.length-1;i>=0;i--){ if(dist(p,state.texts[i])<40){ sel={kind:'txt',i}; dragOff={x:p.x-state.texts[i].x,y:p.y-state.texts[i].y}; snapshot(); return; } }
+  }
+});
+cv.addEventListener('mousemove',e=>{
+  const p=pos(e);
+  if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=p.x-dragOff.x; o.y=p.y-dragOff.y; draw(); return; }
+  if(draft){ draw(); const pts=[...draft.points,p];
+    ctx.save(); ctx.setLineDash([6,5]); drawPolyline(pts,draft.type==='route'?'#16a34a':'#334155',draft.type==='route'?5:6,draft.type==='route'); ctx.restore(); }
+});
+window.addEventListener('mouseup',()=>{ sel=null; });
+cv.addEventListener('dblclick',()=> finishDraft());
+$('finishRoute').addEventListener('click',finishDraft);
+function finishDraft(){ if(draft&&draft.points.length>=2){ snapshot();
+    if(draft.type==='wall')state.walls.push({points:draft.points});
+    else state.routes.push({points:draft.points}); }
+  draft=null; draw(); }
+
+function eraseAt(p){
+  const near=18;
+  for(let i=state.symbols.length-1;i>=0;i--) if(dist(p,state.symbols[i])<26){snapshot();state.symbols.splice(i,1);return draw();}
+  for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<40){snapshot();state.texts.splice(i,1);return draw();}
+  for(let i=state.routes.length-1;i>=0;i--){const pts=state.routes[i].points;
+    for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.routes.splice(i,1);return draw();}}
+  for(let i=state.walls.length-1;i>=0;i--){const pts=state.walls[i].points;
+    for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.walls.splice(i,1);return draw();}}
+}
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'){draft=null;draw();} if(e.key==='Enter')finishDraft(); });
+
+// ---------- drawing ----------
+function drawPolyline(pts,color,w,arrow){
+  if(pts.length<2)return;
+  ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke();
+  if(arrow){ // arrowheads along + at end
+    for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i],an=Math.atan2(b.y-a.y,b.x-a.x);
+      const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; head(mx,my,an,color,w); }
+    const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w);
+  }
+}
+function head(x,y,an,color,w){ const s=w*2.4; ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.4),y-s*Math.sin(an-0.4));
+  ctx.lineTo(x-s*Math.cos(an+0.4),y-s*Math.sin(an+0.4)); ctx.closePath(); ctx.fill(); }
+
+function drawTitleBlock(){
+  const h=46; ctx.fillStyle='#1f2937'; ctx.fillRect(0,0,W,h);
+  ctx.fillStyle='#fff'; ctx.textBaseline='middle';
+  ctx.font='bold 22px "Malgun Gothic",sans-serif'; ctx.textAlign='left';
+  ctx.fillText('비상대피로 안내도',18,h/2);
+  ctx.font='14px "Malgun Gothic",sans-serif'; ctx.textAlign='right';
+  ctx.fillText(`${$('mBld').value}   ${$('mFloor').value}   작성일 ${$('mDate').value}`,W-18,h/2);
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  if(bgImg){ // fit contain
+    const s=Math.min(W/bgImg.width,(H-46)/bgImg.height);
+    const dw=bgImg.width*s, dh=bgImg.height*s;
+    ctx.globalAlpha=0.9; ctx.drawImage(bgImg,(W-dw)/2,46+((H-46)-dh)/2,dw,dh); ctx.globalAlpha=1;
+  }
+  state.walls.forEach(wl=>drawPolyline(wl.points,'#334155',7,false));
+  state.routes.forEach(rt=>drawPolyline(rt.points,'#16a34a',5,true));
+  state.texts.forEach(t=>{ ctx.font='bold 16px "Malgun Gothic",sans-serif'; ctx.textAlign='center';ctx.textBaseline='middle';
+    const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(t.x-tw/2-4,t.y-11,tw+8,22);
+    ctx.fillStyle='#1f2937'; ctx.fillText(t.text,t.x,t.y); });
+  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,42,true));
+  drawTitleBlock();
+}
+
+// ---------- background ----------
+$('bgFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ bgData=rd.result; const im=new Image();
+    im.onload=()=>{bgImg=im;draw();}; im.src=rd.result; }; rd.readAsDataURL(f);});
+$('clearBg').addEventListener('click',()=>{bgImg=null;bgData=null;draw();});
+
+// ---------- actions ----------
+$('undo').addEventListener('click',()=>{ if(history.length){ state=JSON.parse(history.pop()); draft=null; draw(); }});
+$('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[]}; draft=null; draw(); });
+$('exportPng').addEventListener('click',()=>{ draw(); const a=document.createElement('a');
+  a.download=`비상대피로_${$('mBld').value}_${$('mFloor').value}.png`; a.href=cv.toDataURL('image/png'); a.click(); });
+$('print').addEventListener('click',()=>{ const img=cv.toDataURL('image/png');
+  const w=window.open(''); w.document.write(`<img src="${img}" style="width:100%"><script>onload=()=>{print()}<\/script>`); w.document.close(); });
+$('saveJson').addEventListener('click',()=>{ const data={state,bgData,meta:{b:$('mBld').value,f:$('mFloor').value,d:$('mDate').value}};
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'}); const a=document.createElement('a');
+  a.download=`비상대피로_${$('mBld').value}.json`; a.href=URL.createObjectURL(blob); a.click(); });
+$('loadFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{const d=JSON.parse(rd.result); state=d.state||state;
+    if(d.meta){$('mBld').value=d.meta.b;$('mFloor').value=d.meta.f;$('mDate').value=d.meta.d;}
+    if(d.bgData){bgData=d.bgData;const im=new Image();im.onload=()=>{bgImg=im;draw();};im.src=d.bgData;} else {bgImg=null;draw();}
+  }catch(err){alert('파일을 읽을 수 없어요.');}}; rd.readAsText(f);});
+
+['mBld','mFloor','mDate'].forEach(id=>$(id).addEventListener('input',draw));
+
+draw();
+</script>
+</body>
+</html>
