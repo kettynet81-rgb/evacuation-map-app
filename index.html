@@ -229,8 +229,8 @@ function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null;
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'누른 채 끌어서 직선을 긋고 놓으면 끝. 끝점끼리 자동으로 이어져요.',
-    route:'누른 채 끌어서 피난동선을 긋고 놓으면 끝. 화살표가 자동으로 붙어요.',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
+  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'클릭으로 점을 찍어 이어 그려요. 끝내려면 오른쪽클릭 / Enter / 더블클릭 (Esc=취소).',
+    route:'클릭으로 동선 점을 이어 찍고, 오른쪽클릭 / Enter / 더블클릭으로 끝. Esc=취소.',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
   statusMsg(tips[b.dataset.mode]||'');
 }));
 
@@ -270,10 +270,14 @@ function constrainEnd(start,raw){
 
 cv.addEventListener('mousedown',e=>{
   if(viewMode!=='plan') return;
+  if(e.button!==0) return;
   const p=toLogical(pos(e));
   if(mode==='symbol'&&currentSymbol){ if(!inPlan(p))return; snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
   if(mode==='text'){ if(!inPlan(p))return; const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
-  if(mode==='wall'||mode==='route'){ if(!inPlan(p))return; draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; draw(); return; }
+  if(mode==='wall'||mode==='route'){ if(!inPlan(p))return;
+    if(!draft){ draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; }
+    else { const last=draft.points[draft.points.length-1]; const c=constrainEnd(last,p); draft.points.push(c); previewPoint=c; }
+    draw(); return; }
   if(mode==='erase'){ eraseAt(p); return; }
   if(mode==='select'){
     for(let i=state.symbols.length-1;i>=0;i--){ if(dist(p,state.symbols[i])<26){ sel={kind:'sym',i}; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); return; } }
@@ -284,16 +288,16 @@ cv.addEventListener('mousemove',e=>{
   if(viewMode!=='plan') return; const p=toLogical(pos(e));
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i];
     o.x=Math.max(0,Math.min(PLANW,p.x-dragOff.x)); o.y=Math.max(0,Math.min(PLANH,p.y-dragOff.y)); draw(); return; }
-  if(draft){ previewPoint=constrainEnd(draft.points[0],p); draw(); return; }
+  if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
 });
-window.addEventListener('mouseup',()=>{
-  if(draft){ const start=draft.points[0]; const end=previewPoint||start;
-    if(dist(start,end)>6){ snapshot();
-      if(draft.type==='wall') state.walls.push({points:[start,end], w:+$('wallW').value});
-      else state.routes.push({points:[start,end], w:+$('routeW').value}); }
-    draft=null; previewPoint=null; draw(); }
-  sel=null;
-});
+window.addEventListener('mouseup',()=>{ sel=null; });
+// CAD식 선 마무리 / 취소
+function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
+    (draft.type==='wall'?state.walls:state.routes).push({points:draft.points.slice(), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value)}); }
+  draft=null; previewPoint=null; draw(); }
+function cancelLine(){ draft=null; previewPoint=null; draw(); }
+cv.addEventListener('contextmenu',e=>{ if(draft){ e.preventDefault(); finishLine(); } });
+cv.addEventListener('dblclick',()=>{ if(draft){ const pts=draft.points; if(pts.length>=2){ const a=pts[pts.length-1],b=pts[pts.length-2]; if(Math.hypot(a.x-b.x,a.y-b.y)<3)pts.pop(); } finishLine(); } });
 $('wallW').addEventListener('input',()=>{ $('wallWv').textContent=$('wallW').value; });
 $('routeW').addEventListener('input',()=>{ $('routeWv').textContent=$('routeW').value; });
 function eraseAt(p){ const near=18;
@@ -302,7 +306,7 @@ function eraseAt(p){ const near=18;
   for(let i=state.routes.length-1;i>=0;i--){const pts=state.routes[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.routes.splice(i,1);return draw();}}
   for(let i=state.walls.length-1;i>=0;i--){const pts=state.walls[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.walls.splice(i,1);return draw();}}
 }
-window.addEventListener('keydown',e=>{ if(e.key==='Escape'){draft=null;previewPoint=null;draw();} });
+window.addEventListener('keydown',e=>{ if(e.key==='Escape')cancelLine(); if(e.key==='Enter')finishLine(); });
 
 // ===== 그리기 =====
 function drawPolyline(pts,color,w,arrow){
@@ -324,9 +328,11 @@ function drawPlanContent(v){
   state.texts.forEach(t=>{ ctx.font='bold 16px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(t.x-tw/2-4,t.y-11,tw+8,22); ctx.fillStyle='#111'; ctx.fillText(t.text,t.x,t.y); });
   state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,42,true));
-  if(draft){ const pts=[...draft.points]; if(previewPoint&&viewMode==='plan')pts.push(previewPoint);
-    const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value;
-    ctx.setLineDash([6,5]); drawPolyline(pts,draft.type==='route'?C.routeGreen:C.wall,pw,draft.type==='route'); ctx.setLineDash([]); }
+  if(draft){ const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value; const col=draft.type==='route'?C.routeGreen:C.wall;
+    if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route');
+    if(previewPoint&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
+      ctx.setLineDash([7,6]); drawPolyline([last,previewPoint],col,pw,false); ctx.setLineDash([]); }
+    ctx.fillStyle=col; draft.points.forEach(pt=>{ ctx.beginPath(); ctx.arc(pt.x,pt.y,pw*0.55+1.5,0,7); ctx.fill(); }); }
   ctx.restore();
 }
 function wrapText(g,text,x,y,maxW,lh){ const words=text.split(' '); let line='',yy=y;
@@ -387,7 +393,7 @@ function draw(){
   drawPlanContent(v);
   if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); }
   else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText('① 평면도 그리기 — 이 영역 안에 도면을 그리세요',rx+2,ry-6); }
-  if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[0],previewPoint,v);
+  if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
 }
 
 function setView(m){ viewMode=m; draft=null; sel=null; previewPoint=null;
