@@ -89,7 +89,7 @@
     <h2>편집</h2>
     <div class="row2">
       <button class="abtn" id="undo">↶ 되돌리기</button>
-      <button class="abtn" id="finishRoute">동선 끝내기</button>
+      <button class="abtn" id="orthoToggle">📐 직각 스냅: 켬</button>
     </div>
     <button class="abtn warn" id="clearAll">평면도 초기화</button>
 
@@ -203,6 +203,7 @@ let mode='select', currentSymbol=null;
 let draft=null, sel=null, dragOff=null, previewPoint=null;
 let history=[];
 let viewMode='plan';   // 'plan' | 'poster'
+let orthoOn=true;
 
 function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
 function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null;
@@ -212,8 +213,8 @@ function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null;
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'클릭으로 검정 외곽선을 잇고 더블클릭으로 마무리.',
-    route:'클릭으로 피난동선을 잇고 더블클릭/동선 끝내기 → 밝은 녹색 화살표.',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
+  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'누른 채 끌어서 직선을 긋고 놓으면 끝. 끝점끼리 자동으로 이어져요.',
+    route:'누른 채 끌어서 피난동선을 긋고 놓으면 끝. 화살표가 자동으로 붙어요.',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
   statusMsg(tips[b.dataset.mode]||'');
 }));
 
@@ -230,13 +231,22 @@ function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 function segDist(p,a,b){const l2=(a.x-b.x)**2+(a.y-b.y)**2; if(!l2)return dist(p,a);
   let t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/l2; t=Math.max(0,Math.min(1,t));
   return dist(p,{x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)});}
+// 근처 기존 끝점에 붙이기(선 연결용)
+function snapEndpoint(p){ let best=null,bd=15;
+  const scan=arr=>arr.forEach(o=>{const pts=o.points; [pts[0],pts[pts.length-1]].forEach(pt=>{const d=dist(p,pt); if(d<bd){bd=d;best=pt;}});});
+  scan(state.walls); scan(state.routes);
+  return best?{x:best.x,y:best.y}:{x:p.x,y:p.y}; }
+// 직각(수평·수직) 스냅
+function orthoSnap(a,b){ const dx=b.x-a.x, dy=b.y-a.y;
+  const ang=Math.atan2(Math.abs(dy),Math.abs(dx))*180/Math.PI;
+  if(ang<12) return {x:b.x,y:a.y}; if(ang>78) return {x:a.x,y:b.y}; return b; }
 
 cv.addEventListener('mousedown',e=>{
   if(viewMode!=='plan') return;
   const p=toLogical(pos(e));
   if(mode==='symbol'&&currentSymbol){ if(!inPlan(p))return; snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
   if(mode==='text'){ if(!inPlan(p))return; const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
-  if(mode==='wall'||mode==='route'){ if(!inPlan(p))return; if(!draft)draft={type:mode,points:[p]}; else draft.points.push({...p}); draw(); return; }
+  if(mode==='wall'||mode==='route'){ if(!inPlan(p))return; draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; draw(); return; }
   if(mode==='erase'){ eraseAt(p); return; }
   if(mode==='select'){
     for(let i=state.symbols.length-1;i>=0;i--){ if(dist(p,state.symbols[i])<26){ sel={kind:'sym',i}; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); return; } }
@@ -247,21 +257,22 @@ cv.addEventListener('mousemove',e=>{
   if(viewMode!=='plan') return; const p=toLogical(pos(e));
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i];
     o.x=Math.max(0,Math.min(PLANW,p.x-dragOff.x)); o.y=Math.max(0,Math.min(PLANH,p.y-dragOff.y)); draw(); return; }
-  if(draft){ previewPoint=p; draw(); return; }
+  if(draft){ let end=snapEndpoint(p); if(orthoOn) end=orthoSnap(draft.points[0],end); previewPoint=end; draw(); return; }
 });
-window.addEventListener('mouseup',()=>{ sel=null; });
-cv.addEventListener('dblclick',()=>finishDraft());
-$('finishRoute').addEventListener('click',finishDraft);
-function finishDraft(){ if(draft&&draft.points.length>=2){ snapshot();
-    if(draft.type==='wall')state.walls.push({points:draft.points}); else state.routes.push({points:draft.points}); }
-  draft=null; previewPoint=null; draw(); }
+window.addEventListener('mouseup',()=>{
+  if(draft){ const start=draft.points[0]; const end=previewPoint||start;
+    if(dist(start,end)>6){ snapshot(); (draft.type==='wall'?state.walls:state.routes).push({points:[start,end]}); }
+    draft=null; previewPoint=null; draw(); }
+  sel=null;
+});
+$('orthoToggle').addEventListener('click',()=>{ orthoOn=!orthoOn; $('orthoToggle').textContent='📐 직각 스냅: '+(orthoOn?'켬':'끔'); });
 function eraseAt(p){ const near=18;
   for(let i=state.symbols.length-1;i>=0;i--) if(dist(p,state.symbols[i])<26){snapshot();state.symbols.splice(i,1);return draw();}
   for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<40){snapshot();state.texts.splice(i,1);return draw();}
   for(let i=state.routes.length-1;i>=0;i--){const pts=state.routes[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.routes.splice(i,1);return draw();}}
   for(let i=state.walls.length-1;i>=0;i--){const pts=state.walls[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.walls.splice(i,1);return draw();}}
 }
-window.addEventListener('keydown',e=>{ if(e.key==='Escape'){draft=null;previewPoint=null;draw();} if(e.key==='Enter')finishDraft(); });
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'){draft=null;previewPoint=null;draw();} });
 
 // ===== 그리기 =====
 function drawPolyline(pts,color,w,arrow){
