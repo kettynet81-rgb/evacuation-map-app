@@ -68,6 +68,7 @@
     <button class="tbtn active" data-mode="select"><span class="ic">🖱</span>선택·이동</button>
     <button class="tbtn" data-mode="wall"><span class="ic">🧱</span>외곽선(벽)</button>
     <button class="tbtn" data-mode="route"><span class="ic">➡️</span>피난동선</button>
+    <button class="tbtn" data-mode="stair"><span class="ic">🪜</span>계단</button>
     <button class="tbtn" data-mode="text"><span class="ic">🔤</span>방 이름</button>
     <button class="tbtn" data-mode="erase"><span class="ic">🧽</span>지우개</button>
 
@@ -97,8 +98,8 @@
     <h2>선 설정 (CAD)</h2>
     <label class="cadlbl">각도 스냅</label>
     <select id="angleSnap">
+      <option value="free">자유 (대각선 O · Shift=직각)</option>
       <option value="ortho">직각 (수평·수직)</option>
-      <option value="free">자유</option>
       <option value="15">15° 단위</option>
       <option value="30">30° 단위</option>
       <option value="45">45° 단위</option>
@@ -124,7 +125,7 @@
     </div>
     <input type="file" id="loadFile" accept="application/json,.json">
 
-    <div class="hint" id="hint">① 평면도 그리기 모드 — 넓은 흰 영역 안에 도면을 그린 뒤, 위쪽 ② 안내도 완성을 누르면 표준 안내도 틀에 자동으로 들어갑니다.</div>
+    <div class="hint" id="hint">① 평면도 그리기 — 그린 뒤 위쪽 ② 안내도 완성으로. 휠=확대/축소, 가운데버튼 드래그=화면 이동, 0=원래대로.</div>
   </div>
 </div>
 
@@ -214,31 +215,34 @@ Object.keys(SYMBOLS).forEach(type=>{
 });
 
 // ===== state / view =====
-let state={walls:[],routes:[],symbols:[],texts:[]};
+let state={walls:[],routes:[],symbols:[],texts:[],stairs:[]};
 let bgImg=null, bgData=null;
 let mode='select', currentSymbol=null;
 let draft=null, sel=null, dragOff=null, previewPoint=null;
 let history=[];
 let viewMode='plan';   // 'plan' | 'poster'
+let stairA=null, shiftDown=false;
+let zoom=1, panX=0, panY=0, panning=false, panLast=null;
 
 function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
-function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null;
+function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=null;
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   if(m!=='symbol'){ document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); currentSymbol=null; }
   cv.style.cursor=(m==='select')?'move':(m==='erase')?'not-allowed':'crosshair'; draw();
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'클릭으로 점을 찍어 이어 그려요. 끝내려면 오른쪽클릭 / Enter / 더블클릭 (Esc=취소).',
-    route:'클릭으로 동선 점을 이어 찍고, 오른쪽클릭 / Enter / 더블클릭으로 끝. Esc=취소.',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
+  const tips={select:'심볼·방이름을 끌어 이동. 지우려면 지우개.',wall:'클릭으로 점을 이어 그려요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+    route:'클릭으로 동선을 이어 찍어요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+    stair:'두 점을 클릭해 계단 영역을 지정하면 발판이 그려져요. (Esc=취소)',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
   statusMsg(tips[b.dataset.mode]||'');
 }));
 
 // ===== 뷰포트 (논리→화면) =====
 function viewport(){
   if(viewMode==='poster') return {ox:LEFTW, oy:HEADER_H, s:1};
-  const s=Math.min(W/PLANW,H/PLANH)*0.96;
-  return {ox:(W-PLANW*s)/2, oy:(H-PLANH*s)/2, s};
+  const s=Math.min(W/PLANW,H/PLANH)*0.96*zoom;
+  return {ox:(W-PLANW*s)/2+panX, oy:(H-PLANH*s)/2+panY, s};
 }
 function pos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*W, y:(e.clientY-r.top)/r.height*H}; }
 function toLogical(p){ const v=viewport(); return {x:(p.x-v.ox)/v.s, y:(p.y-v.oy)/v.s}; }
@@ -257,21 +261,27 @@ function constrainEnd(start,raw){
   const snapped=snapEndpoint(raw);
   if(snapped.x!==raw.x||snapped.y!==raw.y) return snapped;   // 기존 끝점에 딱 붙기 우선
   const dx=raw.x-start.x, dy=raw.y-start.y, len=Math.hypot(dx,dy);
+  const doInc=(inc)=>{ const step=inc*Math.PI/180; const th=Math.round(Math.atan2(dy,dx)/step)*step; return {x:start.x+Math.cos(th)*len, y:start.y+Math.sin(th)*len}; };
+  if(shiftDown) return doInc(90);                      // Shift 누르면 그때만 직각
   const lockRaw=($('angleLock').value||'').trim();
   if(lockRaw!==''){ const V=parseFloat(lockRaw);
     if(!isNaN(V)){ const a=V*Math.PI/180; const dir={x:Math.cos(a),y:-Math.sin(a)};
       const proj=dx*dir.x+dy*dir.y; return {x:start.x+dir.x*proj, y:start.y+dir.y*proj}; } }
   const sel=$('angleSnap').value; let inc=0;
   if(sel==='ortho')inc=90; else if(sel==='15')inc=15; else if(sel==='30')inc=30; else if(sel==='45')inc=45;
-  if(inc>0){ const step=inc*Math.PI/180; let th=Math.round(Math.atan2(dy,dx)/step)*step;
-    return {x:start.x+Math.cos(th)*len, y:start.y+Math.sin(th)*len}; }
-  return {x:raw.x,y:raw.y};
+  if(inc>0) return doInc(inc);
+  return {x:raw.x,y:raw.y};                             // 자유 = 대각선 그대로
 }
 
 cv.addEventListener('mousedown',e=>{
   if(viewMode!=='plan') return;
+  if(e.button===1){ panning=true; panLast=pos(e); e.preventDefault(); return; }   // 가운데버튼 = 화면 이동
   if(e.button!==0) return;
   const p=toLogical(pos(e));
+  if(mode==='stair'){ if(!inPlan(p))return;
+    if(!stairA){ stairA={x:p.x,y:p.y}; previewPoint={x:p.x,y:p.y}; }
+    else { snapshot(); (state.stairs=state.stairs||[]).push({a:stairA,b:{x:p.x,y:p.y}}); stairA=null; previewPoint=null; }
+    draw(); return; }
   if(mode==='symbol'&&currentSymbol){ if(!inPlan(p))return; snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
   if(mode==='text'){ if(!inPlan(p))return; const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
   if(mode==='wall'||mode==='route'){ if(!inPlan(p))return;
@@ -285,17 +295,27 @@ cv.addEventListener('mousedown',e=>{
   }
 });
 cv.addEventListener('mousemove',e=>{
-  if(viewMode!=='plan') return; const p=toLogical(pos(e));
+  if(viewMode!=='plan') return;
+  if(panning){ const m=pos(e); panX+=m.x-panLast.x; panY+=m.y-panLast.y; panLast=m; draw(); return; }
+  const p=toLogical(pos(e));
+  if(mode==='stair'&&stairA){ previewPoint={x:p.x,y:p.y}; draw(); return; }
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i];
     o.x=Math.max(0,Math.min(PLANW,p.x-dragOff.x)); o.y=Math.max(0,Math.min(PLANH,p.y-dragOff.y)); draw(); return; }
   if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
 });
-window.addEventListener('mouseup',()=>{ sel=null; });
+window.addEventListener('mouseup',()=>{ panning=false; sel=null; });
+// 휠 확대·축소 (커서 기준)
+cv.addEventListener('wheel',e=>{ if(viewMode!=='plan')return; e.preventDefault();
+  const m=pos(e), before=toLogical(m);
+  zoom=Math.max(0.4,Math.min(6, zoom*(e.deltaY<0?1.12:1/1.12)));
+  const a=viewport(); panX+=m.x-(a.ox+before.x*a.s); panY+=m.y-(a.oy+before.y*a.s); draw();
+},{passive:false});
 // CAD식 선 마무리 / 취소
 function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
     (draft.type==='wall'?state.walls:state.routes).push({points:draft.points.slice(), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value)}); }
   draft=null; previewPoint=null; draw(); }
 function cancelLine(){ draft=null; previewPoint=null; draw(); }
+function onEsc(){ const was=!!draft||!!stairA; draft=null; previewPoint=null; stairA=null; setMode('select'); statusMsg(was?'취소 · 선택 모드':'선택 모드'); }
 cv.addEventListener('contextmenu',e=>{ if(draft){ e.preventDefault(); finishLine(); } });
 cv.addEventListener('dblclick',()=>{ if(draft){ const pts=draft.points; if(pts.length>=2){ const a=pts[pts.length-1],b=pts[pts.length-2]; if(Math.hypot(a.x-b.x,a.y-b.y)<3)pts.pop(); } finishLine(); } });
 $('wallW').addEventListener('input',()=>{ $('wallWv').textContent=$('wallW').value; });
@@ -305,8 +325,17 @@ function eraseAt(p){ const near=18;
   for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<40){snapshot();state.texts.splice(i,1);return draw();}
   for(let i=state.routes.length-1;i>=0;i--){const pts=state.routes[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.routes.splice(i,1);return draw();}}
   for(let i=state.walls.length-1;i>=0;i--){const pts=state.walls[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.walls.splice(i,1);return draw();}}
+  for(let i=(state.stairs||[]).length-1;i>=0;i--){ const s=state.stairs[i]; const x=Math.min(s.a.x,s.b.x),y=Math.min(s.a.y,s.b.y),w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
+    const cn=[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}]; for(let j=0;j<4;j++) if(segDist(p,cn[j],cn[(j+1)%4])<near){snapshot();state.stairs.splice(i,1);return draw();} }
 }
-window.addEventListener('keydown',e=>{ if(e.key==='Escape')cancelLine(); if(e.key==='Enter')finishLine(); });
+window.addEventListener('keydown',e=>{
+  const t=document.activeElement; if(t&&['INPUT','SELECT','TEXTAREA'].includes(t.tagName)) return;
+  if(e.key==='Escape')onEsc();
+  else if(e.key==='Enter')finishLine();
+  else if(e.key==='Shift')shiftDown=true;
+  else if(e.key==='0'){ zoom=1; panX=0; panY=0; draw(); }
+});
+window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
 
 // ===== 그리기 =====
 function drawPolyline(pts,color,w,arrow){
@@ -317,12 +346,18 @@ function drawPolyline(pts,color,w,arrow){
 }
 function head(x,y,an,color,w){ const s=w*2.1; ctx.fillStyle=color; ctx.beginPath();
   ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.4),y-s*Math.sin(an-0.4)); ctx.lineTo(x-s*Math.cos(an+0.4),y-s*Math.sin(an+0.4)); ctx.closePath(); ctx.fill(); }
+function drawStair(a,b){ const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(b.x-a.x),h=Math.abs(b.y-a.y);
+  if(w<3||h<3)return; ctx.strokeStyle=C.wall; ctx.lineJoin='miter'; ctx.lineWidth=2.5; ctx.strokeRect(x,y,w,h);
+  ctx.lineWidth=1.6; const horiz=w>=h; const span=horiz?w:h; const n=Math.max(2,Math.round(span/16));
+  for(let i=1;i<n;i++){ const t=i/n; ctx.beginPath();
+    if(horiz){ ctx.moveTo(x+w*t,y); ctx.lineTo(x+w*t,y+h); } else { ctx.moveTo(x,y+h*t); ctx.lineTo(x+w,y+h*t); } ctx.stroke(); } }
 
 function drawPlanContent(v){
   ctx.save(); ctx.translate(v.ox,v.oy); ctx.scale(v.s,v.s);
   ctx.beginPath(); ctx.rect(0,0,PLANW,PLANH); ctx.clip();
   if(bgImg){ const s=Math.min(PLANW/bgImg.width,PLANH/bgImg.height)*0.98; const dw=bgImg.width*s,dh=bgImg.height*s;
     ctx.globalAlpha=0.92; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
+  (state.stairs||[]).forEach(s=>drawStair(s.a,s.b));
   state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
   state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ ctx.font='bold 16px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -333,6 +368,7 @@ function drawPlanContent(v){
     if(previewPoint&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
       ctx.setLineDash([7,6]); drawPolyline([last,previewPoint],col,pw,false); ctx.setLineDash([]); }
     ctx.fillStyle=col; draft.points.forEach(pt=>{ ctx.beginPath(); ctx.arc(pt.x,pt.y,pw*0.55+1.5,0,7); ctx.fill(); }); }
+  if(mode==='stair'&&stairA&&previewPoint&&viewMode==='plan'){ ctx.setLineDash([6,5]); drawStair(stairA,previewPoint); ctx.setLineDash([]); }
   ctx.restore();
 }
 function wrapText(g,text,x,y,maxW,lh){ const words=text.split(' '); let line='',yy=y;
@@ -392,7 +428,7 @@ function draw(){
   else { ctx.fillStyle='#fff'; ctx.fillRect(rx,ry,rw,rh); drawGrid(rx,ry,rw,rh,v.s); ctx.strokeStyle='#c3ccd8'; ctx.lineWidth=2; ctx.strokeRect(rx,ry,rw,rh); }
   drawPlanContent(v);
   if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); }
-  else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText('① 평면도 그리기 — 이 영역 안에 도면을 그리세요',rx+2,ry-6); }
+  else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText('① 평면도 그리기 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',rx+2,Math.max(16,ry-6)); }
   if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
 }
 
@@ -409,7 +445,7 @@ $('modePoster').addEventListener('click',()=>setView('poster'));
 $('bgFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return; const rd=new FileReader(); rd.onload=()=>{ bgData=rd.result; const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=rd.result; }; rd.readAsDataURL(f);});
 $('clearBg').addEventListener('click',()=>{bgImg=null;bgData=null;draw();});
 $('undo').addEventListener('click',()=>{ if(history.length){ state=JSON.parse(history.pop()); draft=null; draw(); }});
-$('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[]}; draft=null; draw(); });
+$('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[],stairs:[]}; draft=null; draw(); });
 
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
 function renderPoster(mime){ const prev=viewMode; viewMode='poster'; draw(); const url=cv.toDataURL(mime||'image/png'); viewMode=prev; draw(); return url; }
@@ -440,7 +476,7 @@ async function cloudSave(){ if(!db){ statusMsg('⚠ 서버 연결이 안 돼요 
 async function cloudList(){ if(!db){ statusMsg('⚠ 서버 연결이 안 돼요.'); return; } statusMsg('목록 불러오는 중…');
   try{ const snap=await getDocs(collection(db,COL)); const items=[]; snap.forEach(d=>items.push({id:d.id,...d.data()}));
     items.sort((a,b)=>(b.ts||0)-(a.ts||0)); openModal(items); statusMsg('저장된 도면 '+items.length+'개'); }catch(e){ statusMsg('목록 오류: '+e.message); } }
-function loadPayload(p){ state=p.state||{walls:[],routes:[],symbols:[],texts:[]}; $('mBld').value=p.building||''; $('mFloor').value=p.floor||''; $('mDate').value=p.date||''; if(p.name)$('mapName').value=p.name;
+function loadPayload(p){ state=p.state||{walls:[],routes:[],symbols:[],texts:[],stairs:[]}; $('mBld').value=p.building||''; $('mFloor').value=p.floor||''; $('mDate').value=p.date||''; if(p.name)$('mapName').value=p.name;
   if(p.bg){ const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=p.bg; } else { bgImg=null; draw(); } history.length=0; draft=null; draw(); }
 async function cloudDelete(id){ try{ await deleteDoc(doc(db,COL,id)); }catch(e){ statusMsg('삭제 실패: '+e.message); } }
 function openModal(items){ const box=$('cloudItems'); box.innerHTML='';
