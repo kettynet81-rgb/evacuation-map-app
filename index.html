@@ -110,7 +110,7 @@
 
 <!-- 클라우드 불러오기 모달 -->
 <div id="cloudModal" style="display:none;position:fixed;inset:0;background:rgba(15,20,30,.5);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#fff;width:min(440px,92%);max-height:74vh;border-radius:16px;padding:16px;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+  <div style="background:#fff;width:min(620px,94%);max-height:80vh;border-radius:16px;padding:16px;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <b style="font-size:15px;">☁ 서버에 저장된 도면</b>
       <button id="cloudClose" style="border:none;background:#eef1f6;border-radius:8px;padding:6px 11px;cursor:pointer;font:inherit;">닫기</button>
@@ -391,13 +391,21 @@ function compressedBg(maxDim=1500,quality=0.72){
   c.getContext('2d').drawImage(bgImg,0,0,c.width,c.height);
   try{ return c.toDataURL('image/jpeg',quality); }catch(e){ return null; }
 }
+// 목록 갤러리에 쓸 썸네일(현재 도면 축소본)
+function makeThumb(w=280){
+  draw();
+  const s=w/cv.width; const c=document.createElement('canvas');
+  c.width=w; c.height=Math.round(cv.height*s);
+  c.getContext('2d').drawImage(cv,0,0,c.width,c.height);
+  try{ return c.toDataURL('image/jpeg',0.6); }catch(e){ return null; }
+}
 async function cloudSave(){
   if(!db){ statusMsg('⚠ 서버 연결이 안 돼요 (인터넷/Firebase 확인).'); return; }
   const nm=($('mapName').value.trim()) || (`${$('mBld').value} ${$('mFloor').value}`.trim()) || '무제';
   let id=nm.replace(/[^\w가-힣ㄱ-ㅎ0-9 _-]/g,'').replace(/\s+/g,'_').slice(0,60);
   if(!id) id='map_'+Math.floor(performance.now());
   let payload={ name:nm, building:$('mBld').value, floor:$('mFloor').value, date:$('mDate').value,
-                state, bg:compressedBg(), ts:Date.now() };
+                state, bg:compressedBg(), thumb:makeThumb(), ts:Date.now() };
   if(JSON.stringify(payload).length>950000){ payload.bg=null; statusMsg('배경 이미지가 커서 도면 요소만 저장했어요.'); }
   statusMsg('저장 중…');
   try{ await setDoc(doc(db,COL,id),payload); statusMsg('☁ 서버에 저장됨 · '+nm); }
@@ -423,17 +431,23 @@ function loadPayload(p){
 async function cloudDelete(id){ try{ await deleteDoc(doc(db,COL,id)); }catch(e){ statusMsg('삭제 실패: '+e.message); } }
 function openModal(items){
   const box=$('cloudItems'); box.innerHTML='';
-  if(!items.length){ box.innerHTML='<div style="color:#8a93a6;padding:18px;text-align:center;">저장된 도면이 없어요.</div>'; }
+  if(!items.length){ box.innerHTML='<div style="color:#8a93a6;padding:18px;text-align:center;">저장된 도면이 없어요.</div>'; $('cloudModal').style.display='flex'; return; }
+  box.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;';
   items.forEach(it=>{
-    const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px;';
-    const b=document.createElement('button');
-    b.style.cssText='flex:1;text-align:left;padding:11px 12px;border:1px solid #e6ebf3;border-radius:10px;background:#f7f9fc;cursor:pointer;font:inherit;';
-    b.innerHTML=`<b>${escapeHtml(it.name||it.id)}</b><br><span style="font-size:11px;color:#8a93a6;">${escapeHtml(((it.building||'')+' '+(it.floor||'')).trim()+'  ·  '+(it.date||''))}</span>`;
-    b.onclick=()=>{ loadPayload(it); closeModal(); statusMsg('불러옴 · '+(it.name||it.id)); };
+    const card=document.createElement('div');
+    card.style.cssText='position:relative;border:1px solid #e6ebf3;border-radius:12px;overflow:hidden;background:#f7f9fc;cursor:pointer;transition:.12s;';
+    card.onmouseenter=()=>card.style.boxShadow='0 6px 18px rgba(37,99,235,.18)';
+    card.onmouseleave=()=>card.style.boxShadow='none';
+    const sub=escapeHtml(((it.building||'')+' '+(it.floor||'')).trim()+(it.date?('  ·  '+it.date):''));
+    const thumb = it.thumb
+      ? `<img src="${it.thumb}" style="width:100%;height:118px;object-fit:cover;display:block;background:#fff;">`
+      : `<div style="width:100%;height:118px;display:flex;align-items:center;justify-content:center;color:#b8c0cc;font-size:12px;background:#eef1f6;">미리보기 없음</div>`;
+    card.innerHTML=`${thumb}<div style="padding:9px 10px;"><b style="font-size:13.5px;color:#26303f;">${escapeHtml(it.name||it.id)}</b><br><span style="font-size:11px;color:#8a93a6;">${sub}</span></div>`;
+    card.onclick=()=>{ loadPayload(it); closeModal(); statusMsg('불러옴 · '+(it.name||it.id)); };
     const x=document.createElement('button'); x.textContent='✕'; x.title='삭제';
-    x.style.cssText='flex:none;width:34px;height:44px;border:1px solid #f0e0e0;border-radius:9px;background:#fff;color:#c0392b;cursor:pointer;';
-    x.onclick=async(e)=>{ e.stopPropagation(); if(confirm('삭제할까요?')){ await cloudDelete(it.id); row.remove(); } };
-    row.appendChild(b); row.appendChild(x); box.appendChild(row);
+    x.style.cssText='position:absolute;top:6px;right:6px;width:26px;height:26px;border:none;border-radius:8px;background:rgba(255,255,255,.9);color:#c0392b;cursor:pointer;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);';
+    x.onclick=async(e)=>{ e.stopPropagation(); if(confirm('삭제할까요?')){ await cloudDelete(it.id); card.remove(); } };
+    card.appendChild(x); box.appendChild(card);
   });
   $('cloudModal').style.display='flex';
 }
