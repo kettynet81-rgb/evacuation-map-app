@@ -90,12 +90,17 @@
     </div>
     <button class="abtn warn" id="clearAll">전체 초기화</button>
 
-    <h2>내보내기</h2>
+    <h2>서버 저장 (클라우드)</h2>
+    <input type="text" id="mapName" placeholder="도면 이름 (예: 1공장 1층)">
+    <button class="abtn pri" id="cloudSave">☁ 서버에 저장</button>
+    <button class="abtn" id="cloudList">☁ 서버에서 불러오기</button>
+
+    <h2>내보내기 / 백업</h2>
     <button class="abtn pri" id="exportPng">🖼 PNG 이미지로 저장</button>
     <button class="abtn" id="print">🖨 인쇄 / PDF</button>
     <div class="row2">
-      <button class="abtn" id="saveJson">💾 저장</button>
-      <button class="abtn" onclick="document.getElementById('loadFile').click()">📂 불러오기</button>
+      <button class="abtn" id="saveJson">💾 파일백업</button>
+      <button class="abtn" onclick="document.getElementById('loadFile').click()">📂 파일열기</button>
     </div>
     <input type="file" id="loadFile" accept="application/json,.json">
 
@@ -103,7 +108,24 @@
   </div>
 </div>
 
-<script>
+<!-- 클라우드 불러오기 모달 -->
+<div id="cloudModal" style="display:none;position:fixed;inset:0;background:rgba(15,20,30,.5);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;width:min(440px,92%);max-height:74vh;border-radius:16px;padding:16px;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <b style="font-size:15px;">☁ 서버에 저장된 도면</b>
+      <button id="cloudClose" style="border:none;background:#eef1f6;border-radius:8px;padding:6px 11px;cursor:pointer;font:inherit;">닫기</button>
+    </div>
+    <div id="cloudItems"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const firebaseConfig={apiKey:"AIzaSyAoPYmhpvYIqx_yYr-Jwm5n2-wdFYtAW_c",authDomain:"ints-weekly.firebaseapp.com",projectId:"ints-weekly",storageBucket:"ints-weekly.firebasestorage.app",messagingSenderId:"421908766897",appId:"1:421908766897:web:f3c4539c61fe3b7ad28290"};
+let db=null; try{ db=getFirestore(initializeApp(firebaseConfig)); }catch(e){ console.error('firebase init',e); }
+const COL='evac_maps';
+
 const cv=document.getElementById('board'), ctx=cv.getContext('2d');
 const W=cv.width, H=cv.height;
 const $=id=>document.getElementById(id);
@@ -357,6 +379,69 @@ $('loadFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)retu
   }catch(err){alert('파일을 읽을 수 없어요.');}}; rd.readAsText(f);});
 
 ['mBld','mFloor','mDate'].forEach(id=>$(id).addEventListener('input',draw));
+
+// ---------- 클라우드 저장/불러오기 (Firebase Firestore) ----------
+function statusMsg(m){ const h=$('hint'); if(h) h.textContent=m; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// 배경 이미지를 Firestore 1MB 제한에 맞게 압축(JPEG)
+function compressedBg(maxDim=1500,quality=0.72){
+  if(!bgImg) return null;
+  const s=Math.min(1,maxDim/Math.max(bgImg.width,bgImg.height));
+  const c=document.createElement('canvas'); c.width=Math.round(bgImg.width*s); c.height=Math.round(bgImg.height*s);
+  c.getContext('2d').drawImage(bgImg,0,0,c.width,c.height);
+  try{ return c.toDataURL('image/jpeg',quality); }catch(e){ return null; }
+}
+async function cloudSave(){
+  if(!db){ statusMsg('⚠ 서버 연결이 안 돼요 (인터넷/Firebase 확인).'); return; }
+  const nm=($('mapName').value.trim()) || (`${$('mBld').value} ${$('mFloor').value}`.trim()) || '무제';
+  let id=nm.replace(/[^\w가-힣ㄱ-ㅎ0-9 _-]/g,'').replace(/\s+/g,'_').slice(0,60);
+  if(!id) id='map_'+Math.floor(performance.now());
+  let payload={ name:nm, building:$('mBld').value, floor:$('mFloor').value, date:$('mDate').value,
+                state, bg:compressedBg(), ts:Date.now() };
+  if(JSON.stringify(payload).length>950000){ payload.bg=null; statusMsg('배경 이미지가 커서 도면 요소만 저장했어요.'); }
+  statusMsg('저장 중…');
+  try{ await setDoc(doc(db,COL,id),payload); statusMsg('☁ 서버에 저장됨 · '+nm); }
+  catch(e){ statusMsg('저장 실패: '+e.message); }
+}
+async function cloudList(){
+  if(!db){ statusMsg('⚠ 서버 연결이 안 돼요.'); return; }
+  statusMsg('목록 불러오는 중…');
+  try{
+    const snap=await getDocs(collection(db,COL));
+    const items=[]; snap.forEach(d=>items.push({id:d.id,...d.data()}));
+    items.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    openModal(items); statusMsg('저장된 도면 '+items.length+'개');
+  }catch(e){ statusMsg('목록 오류: '+e.message); }
+}
+function loadPayload(p){
+  state = p.state || {walls:[],routes:[],symbols:[],texts:[]};
+  $('mBld').value=p.building||''; $('mFloor').value=p.floor||''; $('mDate').value=p.date||'';
+  if(p.name) $('mapName').value=p.name;
+  if(p.bg){ const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=p.bg; } else { bgImg=null; draw(); }
+  history.length=0; draft=null; draw();
+}
+async function cloudDelete(id){ try{ await deleteDoc(doc(db,COL,id)); }catch(e){ statusMsg('삭제 실패: '+e.message); } }
+function openModal(items){
+  const box=$('cloudItems'); box.innerHTML='';
+  if(!items.length){ box.innerHTML='<div style="color:#8a93a6;padding:18px;text-align:center;">저장된 도면이 없어요.</div>'; }
+  items.forEach(it=>{
+    const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+    const b=document.createElement('button');
+    b.style.cssText='flex:1;text-align:left;padding:11px 12px;border:1px solid #e6ebf3;border-radius:10px;background:#f7f9fc;cursor:pointer;font:inherit;';
+    b.innerHTML=`<b>${escapeHtml(it.name||it.id)}</b><br><span style="font-size:11px;color:#8a93a6;">${escapeHtml(((it.building||'')+' '+(it.floor||'')).trim()+'  ·  '+(it.date||''))}</span>`;
+    b.onclick=()=>{ loadPayload(it); closeModal(); statusMsg('불러옴 · '+(it.name||it.id)); };
+    const x=document.createElement('button'); x.textContent='✕'; x.title='삭제';
+    x.style.cssText='flex:none;width:34px;height:44px;border:1px solid #f0e0e0;border-radius:9px;background:#fff;color:#c0392b;cursor:pointer;';
+    x.onclick=async(e)=>{ e.stopPropagation(); if(confirm('삭제할까요?')){ await cloudDelete(it.id); row.remove(); } };
+    row.appendChild(b); row.appendChild(x); box.appendChild(row);
+  });
+  $('cloudModal').style.display='flex';
+}
+function closeModal(){ $('cloudModal').style.display='none'; }
+$('cloudSave').addEventListener('click',cloudSave);
+$('cloudList').addEventListener('click',cloudList);
+$('cloudClose').addEventListener('click',closeModal);
+$('cloudModal').addEventListener('click',e=>{ if(e.target===$('cloudModal')) closeModal(); });
 
 draw();
 </script>
