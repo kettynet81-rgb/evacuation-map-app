@@ -341,11 +341,11 @@ window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
 function drawPolyline(pts,color,w,arrow){
   if(pts.length<2)return; ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke();
-  if(arrow){ for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w); }
-    const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w); }
+  if(arrow){ for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w,2.8); }
+    const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w,4.8); }
 }
-function head(x,y,an,color,w){ const s=w*2.1; ctx.fillStyle=color; ctx.beginPath();
-  ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.4),y-s*Math.sin(an-0.4)); ctx.lineTo(x-s*Math.cos(an+0.4),y-s*Math.sin(an+0.4)); ctx.closePath(); ctx.fill(); }
+function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.42),y-s*Math.sin(an-0.42)); ctx.lineTo(x-s*Math.cos(an+0.42),y-s*Math.sin(an+0.42)); ctx.closePath(); ctx.fill(); }
 function drawStair(a,b){ const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(b.x-a.x),h=Math.abs(b.y-a.y);
   if(w<3||h<3)return; ctx.strokeStyle=C.wall; ctx.lineJoin='miter'; ctx.lineWidth=2.5; ctx.strokeRect(x,y,w,h);
   ctx.lineWidth=1.6; const horiz=w>=h; const span=horiz?w:h; const n=Math.max(2,Math.round(span/16));
