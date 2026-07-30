@@ -44,6 +44,8 @@
   .row2{display:flex;gap:6px;} .row2 .abtn{flex:1;}
   input[type=file]{display:none;}
   select,.side input[type=text]{font:inherit;font-size:13px;padding:8px;border-radius:8px;border:1px solid #d9e0ea;width:100%;}
+  .side input[type=range]{width:100%;accent-color:#2563eb;margin:2px 0 4px;}
+  .cadlbl{display:block;font-size:11.5px;color:#6b7688;margin:5px 2px 2px;}
 </style>
 </head>
 <body>
@@ -89,9 +91,24 @@
     <h2>편집</h2>
     <div class="row2">
       <button class="abtn" id="undo">↶ 되돌리기</button>
-      <button class="abtn" id="orthoToggle">📐 직각 스냅: 켬</button>
+      <button class="abtn warn" id="clearAll">초기화</button>
     </div>
-    <button class="abtn warn" id="clearAll">평면도 초기화</button>
+
+    <h2>선 설정 (CAD)</h2>
+    <label class="cadlbl">각도 스냅</label>
+    <select id="angleSnap">
+      <option value="ortho">직각 (수평·수직)</option>
+      <option value="free">자유</option>
+      <option value="15">15° 단위</option>
+      <option value="30">30° 단위</option>
+      <option value="45">45° 단위</option>
+    </select>
+    <label class="cadlbl">각도 고정(°) · 빈칸=끔</label>
+    <input type="text" id="angleLock" placeholder="예: 45  (0=오른쪽, 90=위)">
+    <label class="cadlbl">벽 굵기 <b id="wallWv">7</b> px</label>
+    <input type="range" id="wallW" min="2" max="16" value="7">
+    <label class="cadlbl">동선 굵기 <b id="routeWv">8</b> px</label>
+    <input type="range" id="routeW" min="3" max="18" value="8">
 
     <h2>서버 저장 (클라우드)</h2>
     <input type="text" id="mapName" placeholder="도면 이름 (예: 1공장 1층)">
@@ -203,7 +220,6 @@ let mode='select', currentSymbol=null;
 let draft=null, sel=null, dragOff=null, previewPoint=null;
 let history=[];
 let viewMode='plan';   // 'plan' | 'poster'
-let orthoOn=true;
 
 function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
 function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null;
@@ -236,10 +252,21 @@ function snapEndpoint(p){ let best=null,bd=15;
   const scan=arr=>arr.forEach(o=>{const pts=o.points; [pts[0],pts[pts.length-1]].forEach(pt=>{const d=dist(p,pt); if(d<bd){bd=d;best=pt;}});});
   scan(state.walls); scan(state.routes);
   return best?{x:best.x,y:best.y}:{x:p.x,y:p.y}; }
-// 직각(수평·수직) 스냅
-function orthoSnap(a,b){ const dx=b.x-a.x, dy=b.y-a.y;
-  const ang=Math.atan2(Math.abs(dy),Math.abs(dx))*180/Math.PI;
-  if(ang<12) return {x:b.x,y:a.y}; if(ang>78) return {x:a.x,y:b.y}; return b; }
+// CAD식 각도 제약: 끝점 스냅 → 각도 고정 → 각도 스냅
+function constrainEnd(start,raw){
+  const snapped=snapEndpoint(raw);
+  if(snapped.x!==raw.x||snapped.y!==raw.y) return snapped;   // 기존 끝점에 딱 붙기 우선
+  const dx=raw.x-start.x, dy=raw.y-start.y, len=Math.hypot(dx,dy);
+  const lockRaw=($('angleLock').value||'').trim();
+  if(lockRaw!==''){ const V=parseFloat(lockRaw);
+    if(!isNaN(V)){ const a=V*Math.PI/180; const dir={x:Math.cos(a),y:-Math.sin(a)};
+      const proj=dx*dir.x+dy*dir.y; return {x:start.x+dir.x*proj, y:start.y+dir.y*proj}; } }
+  const sel=$('angleSnap').value; let inc=0;
+  if(sel==='ortho')inc=90; else if(sel==='15')inc=15; else if(sel==='30')inc=30; else if(sel==='45')inc=45;
+  if(inc>0){ const step=inc*Math.PI/180; let th=Math.round(Math.atan2(dy,dx)/step)*step;
+    return {x:start.x+Math.cos(th)*len, y:start.y+Math.sin(th)*len}; }
+  return {x:raw.x,y:raw.y};
+}
 
 cv.addEventListener('mousedown',e=>{
   if(viewMode!=='plan') return;
@@ -257,15 +284,18 @@ cv.addEventListener('mousemove',e=>{
   if(viewMode!=='plan') return; const p=toLogical(pos(e));
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i];
     o.x=Math.max(0,Math.min(PLANW,p.x-dragOff.x)); o.y=Math.max(0,Math.min(PLANH,p.y-dragOff.y)); draw(); return; }
-  if(draft){ let end=snapEndpoint(p); if(orthoOn) end=orthoSnap(draft.points[0],end); previewPoint=end; draw(); return; }
+  if(draft){ previewPoint=constrainEnd(draft.points[0],p); draw(); return; }
 });
 window.addEventListener('mouseup',()=>{
   if(draft){ const start=draft.points[0]; const end=previewPoint||start;
-    if(dist(start,end)>6){ snapshot(); (draft.type==='wall'?state.walls:state.routes).push({points:[start,end]}); }
+    if(dist(start,end)>6){ snapshot();
+      if(draft.type==='wall') state.walls.push({points:[start,end], w:+$('wallW').value});
+      else state.routes.push({points:[start,end], w:+$('routeW').value}); }
     draft=null; previewPoint=null; draw(); }
   sel=null;
 });
-$('orthoToggle').addEventListener('click',()=>{ orthoOn=!orthoOn; $('orthoToggle').textContent='📐 직각 스냅: '+(orthoOn?'켬':'끔'); });
+$('wallW').addEventListener('input',()=>{ $('wallWv').textContent=$('wallW').value; });
+$('routeW').addEventListener('input',()=>{ $('routeWv').textContent=$('routeW').value; });
 function eraseAt(p){ const near=18;
   for(let i=state.symbols.length-1;i>=0;i--) if(dist(p,state.symbols[i])<26){snapshot();state.symbols.splice(i,1);return draw();}
   for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<40){snapshot();state.texts.splice(i,1);return draw();}
@@ -289,13 +319,14 @@ function drawPlanContent(v){
   ctx.beginPath(); ctx.rect(0,0,PLANW,PLANH); ctx.clip();
   if(bgImg){ const s=Math.min(PLANW/bgImg.width,PLANH/bgImg.height)*0.98; const dw=bgImg.width*s,dh=bgImg.height*s;
     ctx.globalAlpha=0.92; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
-  state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,7,false));
-  state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,8,true));
+  state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
+  state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ ctx.font='bold 16px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(t.x-tw/2-4,t.y-11,tw+8,22); ctx.fillStyle='#111'; ctx.fillText(t.text,t.x,t.y); });
   state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,42,true));
   if(draft){ const pts=[...draft.points]; if(previewPoint&&viewMode==='plan')pts.push(previewPoint);
-    ctx.setLineDash([6,5]); drawPolyline(pts,draft.type==='route'?C.routeGreen:C.wall,draft.type==='route'?8:7,draft.type==='route'); ctx.setLineDash([]); }
+    const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value;
+    ctx.setLineDash([6,5]); drawPolyline(pts,draft.type==='route'?C.routeGreen:C.wall,pw,draft.type==='route'); ctx.setLineDash([]); }
   ctx.restore();
 }
 function wrapText(g,text,x,y,maxW,lh){ const words=text.split(' '); let line='',yy=y;
@@ -336,6 +367,17 @@ function drawLegend(){ const y=H-LEG_H; ctx.fillStyle='#fff'; ctx.fillRect(LEFTW
 function drawGrid(rx,ry,rw,rh,s){ ctx.save(); ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip(); ctx.strokeStyle='#eef1f6'; ctx.lineWidth=1; const g=40*s;
   for(let x=rx;x<=rx+rw;x+=g){ctx.beginPath();ctx.moveTo(x,ry);ctx.lineTo(x,ry+rh);ctx.stroke();}
   for(let y=ry;y<=ry+rh;y+=g){ctx.beginPath();ctx.moveTo(rx,y);ctx.lineTo(rx+rw,y);ctx.stroke();} ctx.restore(); }
+// 그리는 중 길이·각도 표시 (CAD 스타일)
+function drawReadout(a,b,v){
+  const len=Math.hypot(b.x-a.x,b.y-a.y);
+  let ang=Math.atan2(-(b.y-a.y),b.x-a.x)*180/Math.PI; if(ang<0)ang+=360;
+  const txt=`길이 ${Math.round(len)}  ·  ${ang.toFixed(1)}°`;
+  const sx=v.ox+b.x*v.s, sy=v.oy+b.y*v.s;
+  ctx.save(); ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+  const tw=ctx.measureText(txt).width, px=Math.min(W-tw-18, sx+16), py=Math.max(22, sy-18);
+  ctx.fillStyle='rgba(17,24,39,0.92)'; roundRectPath(ctx,px-7,py-12,tw+14,24,6); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.fillText(txt,px,py); ctx.restore();
+}
 
 function draw(){
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
@@ -345,6 +387,7 @@ function draw(){
   drawPlanContent(v);
   if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); }
   else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText('① 평면도 그리기 — 이 영역 안에 도면을 그리세요',rx+2,ry-6); }
+  if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[0],previewPoint,v);
 }
 
 function setView(m){ viewMode=m; draft=null; sel=null; previewPoint=null;
