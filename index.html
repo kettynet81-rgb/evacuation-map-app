@@ -294,13 +294,13 @@ cv.addEventListener('mousedown',e=>{
   if(e.button===1){ panning=true; panLast=pos(e); e.preventDefault(); return; }   // 가운데버튼 = 화면 이동
   if(e.button!==0) return;
   const p=toLogical(pos(e));
-  if(mode==='stair'){ if(!inPlan(p))return;
+  if(mode==='stair'){
     if(!stairA){ stairA={x:p.x,y:p.y}; previewPoint={x:p.x,y:p.y}; }
     else { snapshot(); (state.stairs=state.stairs||[]).push({a:stairA,b:{x:p.x,y:p.y}}); stairA=null; previewPoint=null; }
     draw(); return; }
-  if(mode==='symbol'&&currentSymbol){ if(!inPlan(p))return; snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
-  if(mode==='text'){ if(!inPlan(p))return; const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
-  if(mode==='wall'||mode==='route'){ if(!inPlan(p))return;
+  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
+  if(mode==='text'){ const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
+  if(mode==='wall'||mode==='route'){
     if(!draft){ draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; }
     else { const last=draft.points[draft.points.length-1]; const c=constrainEnd(last,p); draft.points.push(c); previewPoint=c; }
     draw(); return; }
@@ -315,15 +315,14 @@ cv.addEventListener('mousemove',e=>{
   if(panning){ const m=pos(e); panX+=m.x-panLast.x; panY+=m.y-panLast.y; panLast=m; draw(); return; }
   const p=toLogical(pos(e));
   if(mode==='stair'&&stairA){ previewPoint={x:p.x,y:p.y}; draw(); return; }
-  if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i];
-    o.x=Math.max(0,Math.min(PLANW,p.x-dragOff.x)); o.y=Math.max(0,Math.min(PLANH,p.y-dragOff.y)); draw(); return; }
+  if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=p.x-dragOff.x; o.y=p.y-dragOff.y; draw(); return; }
   if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
 });
 window.addEventListener('mouseup',()=>{ panning=false; sel=null; });
 // 휠 확대·축소 (커서 기준)
 cv.addEventListener('wheel',e=>{ if(viewMode!=='plan')return; e.preventDefault();
   const m=pos(e), before=toLogical(m);
-  zoom=Math.max(0.4,Math.min(6, zoom*(e.deltaY<0?1.12:1/1.12)));
+  zoom=Math.max(0.12,Math.min(6, zoom*(e.deltaY<0?1.12:1/1.12)));
   const a=viewport(); panX+=m.x-(a.ox+before.x*a.s); panY+=m.y-(a.oy+before.y*a.s); draw();
 },{passive:false});
 // CAD식 선 마무리 / 취소
@@ -371,7 +370,7 @@ function drawStair(a,b){ const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.ab
 function drawPlanContent(v){
   ctx.save();
   if(viewMode==='poster'){ ctx.beginPath(); ctx.rect(REGX,REGY,REGW,REGH); ctx.clip(); }
-  else { ctx.beginPath(); ctx.rect(v.ox,v.oy,PLANW*v.s,PLANH*v.s); ctx.clip(); }
+  else { ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); }
   ctx.translate(v.ox,v.oy); ctx.scale(v.s,v.s);
   if(bgImg){ const s=Math.min(PLANW/bgImg.width,PLANH/bgImg.height)*0.98; const dw=bgImg.width*s,dh=bgImg.height*s;
     ctx.globalAlpha=0.92; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
@@ -438,9 +437,9 @@ function drawLegend(){ const y=H-LEG_H;
       ctx.fillStyle=C.routeGreen; ctx.beginPath(); ctx.moveTo(lx+27,cyc); ctx.lineTo(lx+17,cyc-6); ctx.lineTo(lx+17,cyc+6); ctx.closePath(); ctx.fill(); label('피난동선',lx+34,cyc);
     } else { drawSymbol(ctx,it.type,lx+11,cyc,24,false); label(SYMBOLS[it.type].label,lx+28,cyc); } lx+=gap; });
 }
-function drawGrid(rx,ry,rw,rh,s){ ctx.save(); ctx.beginPath(); ctx.rect(rx,ry,rw,rh); ctx.clip(); ctx.strokeStyle='#eef1f6'; ctx.lineWidth=1; const g=40*s;
-  for(let x=rx;x<=rx+rw;x+=g){ctx.beginPath();ctx.moveTo(x,ry);ctx.lineTo(x,ry+rh);ctx.stroke();}
-  for(let y=ry;y<=ry+rh;y+=g){ctx.beginPath();ctx.moveTo(rx,y);ctx.lineTo(rx+rw,y);ctx.stroke();} ctx.restore(); }
+function drawWorldGrid(v){ const G=100, sp=G*v.s; if(sp<6) return; ctx.save(); ctx.strokeStyle='#e9edf4'; ctx.lineWidth=1;
+  let wx=Math.floor((0-v.ox)/v.s/G)*G; for(let x=v.ox+wx*v.s; x<=W; x+=sp){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  let wy=Math.floor((0-v.oy)/v.s/G)*G; for(let y=v.oy+wy*v.s; y<=H; y+=sp){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.restore(); }
 // 그리는 중 길이·각도 표시 (CAD 스타일)
 function drawReadout(a,b,v){
   const len=Math.hypot(b.x-a.x,b.y-a.y);
@@ -457,10 +456,10 @@ function draw(){
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
   const v=viewport();
   if(viewMode==='poster'){ ctx.fillStyle=C.yellow; ctx.fillRect(REGX,REGY,REGW,REGH); }
-  else { const rw=PLANW*v.s, rh=PLANH*v.s; ctx.fillStyle='#fff'; ctx.fillRect(v.ox,v.oy,rw,rh); drawGrid(v.ox,v.oy,rw,rh,v.s); ctx.strokeStyle='#c3ccd8'; ctx.lineWidth=2; ctx.strokeRect(v.ox,v.oy,rw,rh); }
+  else { ctx.fillStyle='#fbfcfe'; ctx.fillRect(0,0,W,H); drawWorldGrid(v); }
   drawPlanContent(v);
   if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); }
-  else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText('① 평면도 그리기 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',v.ox+2,Math.max(16,v.oy-6)); }
+  else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('① 평면도 그리기 · 무한 캔버스 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',10,8); }
   if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
 }
 
