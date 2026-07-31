@@ -425,7 +425,7 @@ function drawPolyline(pts,color,w,arrow){
 }
 function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
   ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.42),y-s*Math.sin(an-0.42)); ctx.lineTo(x-s*Math.cos(an+0.42),y-s*Math.sin(an+0.42)); ctx.closePath(); ctx.fill(); }
-function fmtLen(len){ const f=parseFloat(($('mmPerPx').value||'1').trim()); const mm=len*((isNaN(f)||f<=0)?1:f); return Math.round(mm)+''; }
+function fmtLen(len){ return Math.round(len)+''; }
 function drawDim(a,b,s){ const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy); if(len<10/s)return;
   const ang=Math.atan2(dy,dx), off=13/s, ox=-Math.sin(ang)*off, oy=Math.cos(ang)*off;
   ctx.save(); ctx.translate((a.x+b.x)/2+ox,(a.y+b.y)/2+oy); let ra=ang; if(ra>Math.PI/2)ra-=Math.PI; if(ra<-Math.PI/2)ra+=Math.PI; ctx.rotate(ra);
@@ -544,7 +544,9 @@ function drawFooter(){ if(TH[theme].legend!=='top') return;
   ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,H-36); ctx.lineTo(W,H-36); ctx.stroke();
   ctx.fillStyle='#c0392b'; ctx.font='bold 15px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText('화재신고는 국번없이  119',20,H-18); }
 function posterBg(){ if(TH[theme].plan==='#ffe400'){ ctx.fillStyle='#ffe400'; ctx.fillRect(REGX,REGY,REGW,REGH); }
-  else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H); ctx.strokeStyle='#d7dbe0'; ctx.lineWidth=1.5; ctx.strokeRect(REGX-6,REGY-4,REGW+12,REGH+8); } }
+  else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='#cfd4db'; ctx.lineWidth=2; ctx.strokeRect(7,7,W-14,H-14);
+    ctx.strokeStyle='#d7dbe0'; ctx.lineWidth=1.5; ctx.strokeRect(REGX-6,REGY-4,REGW+12,REGH+8); } }
 function drawFloorLabel(){ const fl=$('mFloor').value||''; if(!fl)return; ctx.fillStyle='#111'; ctx.font='900 38px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(fl,REGX+8,REGY+6); }
 function drawWorldGrid(v){ const G=100, sp=G*v.s; if(sp<6) return; ctx.save(); ctx.strokeStyle='#e9edf4'; ctx.lineWidth=1;
   let wx=Math.floor((0-v.ox)/v.s/G)*G; for(let x=v.ox+wx*v.s; x<=W; x+=sp){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
