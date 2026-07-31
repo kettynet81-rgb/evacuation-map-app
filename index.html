@@ -110,6 +110,8 @@
     <input type="range" id="wallW" min="2" max="16" value="7">
     <label class="cadlbl">동선 굵기 <b id="routeWv">8</b> px</label>
     <input type="range" id="routeW" min="3" max="18" value="8">
+    <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택하면 그 심볼도 조절</label>
+    <input type="range" id="symSize" min="18" max="110" value="42">
 
     <h2>서버 저장 (클라우드)</h2>
     <input type="text" id="mapName" placeholder="도면 이름 (예: 1공장 1층)">
@@ -159,7 +161,7 @@ const PLANW=3000, PLANH=Math.round(3000*REGH/REGW);   // 실제 도면 시트 �
 
 // ===== 심볼 =====
 const SYMBOLS={
-  exit_r:{label:'비상구(우)',color:C.exitGreen}, exit_l:{label:'비상구(좌)',color:C.exitGreen},
+  exit:{label:'비상구',color:C.exitGreen},
   fire_ext:{label:'소화기',color:C.red}, alarm:{label:'발신기',color:C.red}, here:{label:'현재위치',color:C.blue},
   restroom:{label:'화장실',color:'#fff'}, elevator:{label:'엘리베이터',color:'#fff'},
   firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'대피장소',color:C.exitGreen},
@@ -171,7 +173,7 @@ function drawSymbol(g,type,x,y,S,withLabel){
   g.save(); roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
   g.translate(x,y); const wht='#fff'; g.fillStyle=wht; g.strokeStyle=wht; g.lineCap='round'; g.lineJoin='round';
-  if(type==='exit_r'||type==='exit_l'){ const dir=type==='exit_r'?1:-1;
+  if(type==='exit'){ const dir=1;
     g.save(); g.scale(dir,1);
     g.beginPath(); g.arc(-6*u,-10*u,3.4*u,0,7); g.fill();
     g.lineWidth=3*u; g.beginPath();
@@ -219,14 +221,14 @@ Object.keys(SYMBOLS).forEach(type=>{
 let state={walls:[],routes:[],symbols:[],texts:[],stairs:[]};
 let bgImg=null, bgData=null;
 let mode='select', currentSymbol=null;
-let draft=null, sel=null, dragOff=null, previewPoint=null;
+let draft=null, sel=null, dragOff=null, previewPoint=null, selSym=null;
 let history=[];
 let viewMode='plan';   // 'plan' | 'poster'
 let stairA=null, shiftDown=false;
 let zoom=1, panX=0, panY=0, panning=false, panLast=null;
 
 function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
-function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=null;
+function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=null; selSym=null;
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   if(m!=='symbol'){ document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); currentSymbol=null; }
   cv.style.cursor=(m==='select')?'move':(m==='erase')?'not-allowed':'crosshair'; draw();
@@ -257,7 +259,7 @@ function contentBounds(){
 function viewport(){
   if(viewMode==='poster'){ const b=contentBounds(); const s=Math.min(REGW/b.w,REGH/b.h);
     return {ox:REGX+(REGW-b.w*s)/2-b.x*s, oy:REGY+(REGH-b.h*s)/2-b.y*s, s}; }
-  const s=Math.min(W/PLANW,H/PLANH)*0.96*zoom;
+  const s=0.9*zoom;
   return {ox:(W-PLANW*s)/2+panX, oy:(H-PLANH*s)/2+panY, s};
 }
 function pos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*W, y:(e.clientY-r.top)/r.height*H}; }
@@ -298,7 +300,7 @@ cv.addEventListener('mousedown',e=>{
     if(!stairA){ stairA={x:p.x,y:p.y}; previewPoint={x:p.x,y:p.y}; }
     else { snapshot(); (state.stairs=state.stairs||[]).push({a:stairA,b:{x:p.x,y:p.y}}); stairA=null; previewPoint=null; }
     draw(); return; }
-  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y}); draw(); return; }
+  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y,size:+$('symSize').value}); draw(); return; }
   if(mode==='text'){ const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t}); draw(); return; }
   if(mode==='wall'||mode==='route'){
     if(!draft){ draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; }
@@ -306,8 +308,10 @@ cv.addEventListener('mousedown',e=>{
     draw(); return; }
   if(mode==='erase'){ eraseAt(p); return; }
   if(mode==='select'){
-    for(let i=state.symbols.length-1;i>=0;i--){ if(dist(p,state.symbols[i])<26){ sel={kind:'sym',i}; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); return; } }
-    for(let i=state.texts.length-1;i>=0;i--){ if(dist(p,state.texts[i])<40){ sel={kind:'txt',i}; dragOff={x:p.x-state.texts[i].x,y:p.y-state.texts[i].y}; snapshot(); return; } }
+    const v=viewport();
+    for(let i=state.symbols.length-1;i>=0;i--){ const sz=state.symbols[i].size||42; if(dist(p,state.symbols[i])<Math.max(sz*0.62,18/v.s)){ sel={kind:'sym',i}; selSym=i; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); $('symSize').value=sz; $('symSizeV').textContent=sz; draw(); return; } }
+    for(let i=state.texts.length-1;i>=0;i--){ if(dist(p,state.texts[i])<Math.max(34,30/v.s)){ sel={kind:'txt',i}; selSym=null; dragOff={x:p.x-state.texts[i].x,y:p.y-state.texts[i].y}; snapshot(); draw(); return; } }
+    selSym=null; draw();
   }
 });
 cv.addEventListener('mousemove',e=>{
@@ -335,9 +339,10 @@ cv.addEventListener('contextmenu',e=>{ if(draft){ e.preventDefault(); finishLine
 cv.addEventListener('dblclick',()=>{ if(draft){ const pts=draft.points; if(pts.length>=2){ const a=pts[pts.length-1],b=pts[pts.length-2]; if(Math.hypot(a.x-b.x,a.y-b.y)<3)pts.pop(); } finishLine(); } });
 $('wallW').addEventListener('input',()=>{ $('wallWv').textContent=$('wallW').value; });
 $('routeW').addEventListener('input',()=>{ $('routeWv').textContent=$('routeW').value; });
-function eraseAt(p){ const near=18;
-  for(let i=state.symbols.length-1;i>=0;i--) if(dist(p,state.symbols[i])<26){snapshot();state.symbols.splice(i,1);return draw();}
-  for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<40){snapshot();state.texts.splice(i,1);return draw();}
+$('symSize').addEventListener('input',()=>{ $('symSizeV').textContent=$('symSize').value; if(selSym!=null&&state.symbols[selSym]){ state.symbols[selSym].size=+$('symSize').value; draw(); } });
+function eraseAt(p){ const v=viewport(); const near=14/v.s;
+  for(let i=state.symbols.length-1;i>=0;i--){ const sz=state.symbols[i].size||42; if(dist(p,state.symbols[i])<Math.max(sz*0.62,18/v.s)){snapshot();state.symbols.splice(i,1);selSym=null;return draw();} }
+  for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<Math.max(34,30/v.s)){snapshot();state.texts.splice(i,1);return draw();}
   for(let i=state.routes.length-1;i>=0;i--){const pts=state.routes[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.routes.splice(i,1);return draw();}}
   for(let i=state.walls.length-1;i>=0;i--){const pts=state.walls[i].points; for(let j=0;j<pts.length-1;j++) if(segDist(p,pts[j],pts[j+1])<near){snapshot();state.walls.splice(i,1);return draw();}}
   for(let i=(state.stairs||[]).length-1;i>=0;i--){ const s=state.stairs[i]; const x=Math.min(s.a.x,s.b.x),y=Math.min(s.a.y,s.b.y),w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
@@ -355,8 +360,12 @@ window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
 // ===== 그리기 =====
 function drawPolyline(pts,color,w,arrow){
   if(pts.length<2)return; ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke();
-  if(arrow){ for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w,2.8); }
+  let sp=pts;
+  if(arrow){ const a=pts[pts.length-2],b=pts[pts.length-1]; const ang=Math.atan2(b.y-a.y,b.x-a.x);
+    const hs=Math.max(w*4.8,14)*0.9, d=Math.hypot(b.x-a.x,b.y-a.y);
+    if(d>hs){ sp=pts.slice(0,-1).concat([{x:b.x-Math.cos(ang)*hs, y:b.y-Math.sin(ang)*hs}]); } }
+  ctx.beginPath(); ctx.moveTo(sp[0].x,sp[0].y); for(let i=1;i<sp.length;i++)ctx.lineTo(sp[i].x,sp[i].y); ctx.stroke();
+  if(arrow){ for(let i=1;i<pts.length-1;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w,2.8); }
     const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w,4.8); }
 }
 function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
@@ -379,7 +388,9 @@ function drawPlanContent(v){
   state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ ctx.font='bold 16px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(t.x-tw/2-4,t.y-11,tw+8,22); ctx.fillStyle='#111'; ctx.fillText(t.text,t.x,t.y); });
-  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,42,true));
+  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true));
+  if(viewMode==='plan'&&selSym!=null&&state.symbols[selSym]){ const s=state.symbols[selSym], sz=(s.size||42)*0.64;
+    ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(s.x-sz,s.y-sz,sz*2,sz*2); ctx.restore(); }
   if(draft){ const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value; const col=draft.type==='route'?C.routeGreen:C.wall;
     if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route');
     if(previewPoint&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
@@ -428,7 +439,7 @@ function drawLegend(){ const y=H-LEG_H;
   ctx.strokeStyle='#111'; ctx.lineWidth=1.5; ctx.strokeRect(lx0+6,y+8,W-lx0-14,LEG_H-16);
   ctx.fillStyle='#111'; ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
   ctx.fillText('▎범례',lx0+18,y+LEG_H/2);
-  const items=[{kind:'route'},{type:'here'},{type:'exit_r'},{type:'fire_ext'},{type:'alarm'}];
+  const items=[{kind:'route'},{type:'here'},{type:'exit'},{type:'fire_ext'},{type:'alarm'}];
   const startX=lx0+78, gap=(W-startX-24)/items.length;
   const label=(t,x,cyc)=>{ ctx.fillStyle='#111'; ctx.font='12px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(t,x,cyc); };
   let lx=startX;
@@ -475,8 +486,8 @@ $('modePoster').addEventListener('click',()=>setView('poster'));
 // ===== 배경/액션 =====
 $('bgFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return; const rd=new FileReader(); rd.onload=()=>{ bgData=rd.result; const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=rd.result; }; rd.readAsDataURL(f);});
 $('clearBg').addEventListener('click',()=>{bgImg=null;bgData=null;draw();});
-$('undo').addEventListener('click',()=>{ if(history.length){ state=JSON.parse(history.pop()); draft=null; draw(); }});
-$('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[],stairs:[]}; draft=null; draw(); });
+$('undo').addEventListener('click',()=>{ if(history.length){ state=JSON.parse(history.pop()); draft=null; selSym=null; draw(); }});
+$('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[],stairs:[]}; draft=null; selSym=null; draw(); });
 
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
 function renderPoster(mime){ const prev=viewMode; viewMode='poster'; draw(); const url=cv.toDataURL(mime||'image/png'); viewMode=prev; draw(); return url; }
@@ -508,7 +519,7 @@ async function cloudList(){ if(!db){ statusMsg('⚠ 서버 연결이 안 돼요.
   try{ const snap=await getDocs(collection(db,COL)); const items=[]; snap.forEach(d=>items.push({id:d.id,...d.data()}));
     items.sort((a,b)=>(b.ts||0)-(a.ts||0)); openModal(items); statusMsg('저장된 도면 '+items.length+'개'); }catch(e){ statusMsg('목록 오류: '+e.message); } }
 function loadPayload(p){ state=p.state||{walls:[],routes:[],symbols:[],texts:[],stairs:[]}; $('mBld').value=p.building||''; $('mFloor').value=p.floor||''; $('mDate').value=p.date||''; if(p.name)$('mapName').value=p.name;
-  if(p.bg){ const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=p.bg; } else { bgImg=null; draw(); } history.length=0; draft=null; draw(); }
+  if(p.bg){ const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=p.bg; } else { bgImg=null; draw(); } history.length=0; draft=null; selSym=null; draw(); }
 async function cloudDelete(id){ try{ await deleteDoc(doc(db,COL,id)); }catch(e){ statusMsg('삭제 실패: '+e.message); } }
 function openModal(items){ const box=$('cloudItems'); box.innerHTML='';
   if(!items.length){ box.innerHTML='<div style="color:#8a93a6;padding:18px;text-align:center;">저장된 도면이 없어요.</div>'; $('cloudModal').style.display='flex'; return; }
