@@ -166,10 +166,10 @@ const W=cv.width, H=cv.height;
 const $=id=>document.getElementById(id);
 
 const C={ red:'#e2231a', yellow:'#ffe400', routeGreen:'#8DC63F', exitGreen:'#1a9e46', blue:'#1b3a9e', wall:'#111111' };
-const HEADER_H=74, LEFTW=252;
+const HEADER_H=74, LEFTW=252, S_LEGH=44, S_FOOT=36;
 let theme='simple';
 let REGX, REGY, REGW, REGH;
-function computeRegion(){ if(theme==='simple'){ const LG=44,FT=36; REGX=LEFTW+10;REGY=HEADER_H+LG;REGW=W-LEFTW-20;REGH=H-HEADER_H-LG-FT; }
+function computeRegion(){ if(theme==='simple'){ REGX=LEFTW+16; REGY=HEADER_H+S_LEGH+12; REGW=(W-16)-REGX; REGH=(H-S_FOOT-12)-REGY; }
   else { const LG=58; REGX=LEFTW+8;REGY=HEADER_H+6;REGW=W-LEFTW-16;REGH=H-HEADER_H-LG-12; } }
 computeRegion();
 const PLANW=3000, PLANH=2000;   // 실제 도면 시트(고정) — 건물 전체를 넓게 그리기 위한 큰 좌표계
@@ -513,7 +513,6 @@ function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'';
     ctx.fillStyle='#c7ccd3'; ctx.beginPath(); ctx.moveTo(bx+232,by0); ctx.lineTo(bx+276,by0); ctx.lineTo(bx+276-sk,by1); ctx.lineTo(bx+232-sk,by1); ctx.closePath(); ctx.fill();
     // 우측: 위치/장소 (입력값)
     ctx.fillStyle='#111'; ctx.font='bold 22px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(bld,W-22,HEADER_H/2);
-    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,HEADER_H); ctx.lineTo(W,HEADER_H); ctx.stroke();
   } else {
     ctx.fillStyle=th.head; ctx.fillRect(0,0,W,HEADER_H); ctx.fillStyle='#fff'; ctx.textBaseline='middle';
     ctx.font='bold 38px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.fillText('피난안내도',26,HEADER_H/2);
@@ -522,7 +521,7 @@ function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'';
   }
 }
 function drawLeftPanel(){ ctx.fillStyle='#fff'; ctx.fillRect(0,HEADER_H,LEFTW,H);
-  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(LEFTW,HEADER_H+4); ctx.lineTo(LEFTW,H-6); ctx.stroke();
+  if(theme!=='simple'){ ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(LEFTW,HEADER_H+4); ctx.lineTo(LEFTW,H-6); ctx.stroke(); }
   const x=16,w=LEFTW-30; let y=HEADER_H+16; y=drawStepList(ctx,'화재 시 피난요령','HOW TO EVACUATE IN CASE OF FIRE',FIRE_STEPS,x,y,w); y+=16;
   drawStepList(ctx,'소화기 사용요령','HOW TO USE A FIRE EXTINGUISHER',EXT_STEPS,x,y,w); }
 const LEG_ITEMS=[{kind:'route',label:'피난동선'},{type:'here'},{type:'exit'},{type:'descend'},{type:'fire_ext'},{type:'alarm'}];
@@ -548,15 +547,21 @@ function drawLegend(){
   }
 }
 function drawFooter(){ if(TH[theme].legend!=='top') return;
-  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,H-36); ctx.lineTo(W,H-36); ctx.stroke();
-  ctx.fillStyle='#111'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText('화재신고는 국번없이',20,H-18);
+  ctx.fillStyle='#111'; ctx.font='bold 14px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText('화재신고는 국번없이',20,H-S_FOOT/2);
   const tw=ctx.measureText('화재신고는 국번없이').width;
-  if(LOGO119.complete && LOGO119.naturalWidth){ const lh=24, lw=LOGO119.naturalWidth*lh/LOGO119.naturalHeight; ctx.drawImage(LOGO119, 20+tw+14, H-18-lh/2, lw, lh); }
-  else { ctx.fillStyle='#c0392b'; ctx.font='800 20px "Malgun Gothic",sans-serif'; ctx.fillText('119',20+tw+14,H-16); } }
-function posterBg(){ if(TH[theme].plan==='#ffe400'){ ctx.fillStyle='#ffe400'; ctx.fillRect(REGX,REGY,REGW,REGH); }
-  else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle='#cfd4db'; ctx.lineWidth=2; ctx.strokeRect(7,7,W-14,H-14);
-    ctx.strokeStyle='#d7dbe0'; ctx.lineWidth=1.5; ctx.strokeRect(REGX-6,REGY-4,REGW+12,REGH+8); } }
+  if(LOGO119.complete && LOGO119.naturalWidth){ const lh=22, lw=LOGO119.naturalWidth*lh/LOGO119.naturalHeight; ctx.drawImage(LOGO119, 20+tw+14, H-S_FOOT/2-lh/2, lw, lh); }
+  else { ctx.fillStyle='#c0392b'; ctx.font='800 20px "Malgun Gothic",sans-serif'; ctx.fillText('119',20+tw+14,H-S_FOOT/2+2); } }
+function posterBg(){ if(TH[theme].plan==='#ffe400'){ ctx.fillStyle='#ffe400'; ctx.fillRect(REGX,REGY,REGW,REGH); return; }
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  if(theme!=='simple'){ ctx.strokeStyle='#cfd4db'; ctx.lineWidth=2; ctx.strokeRect(7,7,W-14,H-14); ctx.strokeStyle='#d7dbe0'; ctx.lineWidth=1.5; ctx.strokeRect(REGX-6,REGY-4,REGW+12,REGH+8); } }
+function drawFrame(){ const L=(a,b,c,d)=>{ ctx.beginPath(); ctx.moveTo(a,b); ctx.lineTo(c,d); ctx.stroke(); };
+  ctx.strokeStyle='#cfd4db'; ctx.lineWidth=2; ctx.strokeRect(6,6,W-12,H-12);
+  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5;
+  L(6,HEADER_H,W-6,HEADER_H);                       // 헤더 하단
+  L(LEFTW,HEADER_H,LEFTW,H-S_FOOT);                 // 좌측 패널 구분
+  L(6,H-S_FOOT,W-6,H-S_FOOT);                       // 푸터 상단
+  L(LEFTW,HEADER_H+S_LEGH,W-6,HEADER_H+S_LEGH);     // 범례/평면도 구분
+}
 function drawFloorLabel(){ const fl=$('mFloor').value||''; if(!fl)return; ctx.fillStyle='#111'; ctx.font='900 38px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(fl,REGX+8,REGY+6); }
 function drawWorldGrid(v){ const G=100, sp=G*v.s; if(sp<6) return; ctx.save(); ctx.strokeStyle='#e9edf4'; ctx.lineWidth=1;
   let wx=Math.floor((0-v.ox)/v.s/G)*G; for(let x=v.ox+wx*v.s; x<=W; x+=sp){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
@@ -580,7 +585,7 @@ function draw(){
   if(viewMode==='poster'){ posterBg(); }
   else { ctx.fillStyle='#fbfcfe'; ctx.fillRect(0,0,W,H); drawWorldGrid(v); }
   drawPlanContent(v);
-  if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); drawFooter(); drawFloorLabel(); }
+  if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); drawFooter(); drawFloorLabel(); if(theme==='simple') drawFrame(); }
   else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('① 평면도 그리기 · 무한 캔버스 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',10,8); }
   if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
 }
