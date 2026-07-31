@@ -115,7 +115,7 @@
     <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택하면 그 심볼도 조절</label>
     <input type="range" id="symSize" min="18" max="110" value="42">
     <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="dimOn"> 치수(길이) 표시</label>
-    <label class="cadlbl">축척 · 1 m = <input type="text" id="scalePx" placeholder="예:100" style="width:70px;display:inline-block;"> px <span style="color:#aab;">(빈칸=px)</span></label>
+    <label class="cadlbl">치수 배율 · 1 px = <input type="text" id="mmPerPx" value="1" style="width:56px;display:inline-block;"> mm</label>
 
     <h2>서버 저장 (클라우드)</h2>
     <input type="text" id="mapName" placeholder="도면 이름 (예: 1공장 1층)">
@@ -177,15 +177,21 @@ function drawSymbol(g,type,x,y,S,withLabel){
   g.save(); roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
   g.translate(x,y); const wht='#fff'; g.fillStyle=wht; g.strokeStyle=wht; g.lineCap='round'; g.lineJoin='round';
-  if(type==='exit'){ const dir=1;
-    g.save(); g.scale(dir,1);
-    g.beginPath(); g.arc(-6*u,-10*u,3.4*u,0,7); g.fill();
+  if(type==='exit'){
+    g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineCap='round'; g.lineJoin='round';
+    // 문(오른쪽, 열린 문틀)
+    g.lineWidth=2.4*u; g.beginPath(); g.moveTo(9*u,-14*u); g.lineTo(15*u,-14*u); g.lineTo(15*u,14*u); g.lineTo(9*u,14*u); g.stroke();
+    // 달리는 사람(실루엣)
+    g.beginPath(); g.arc(-4*u,-9*u,3.7*u,0,7); g.fill();                          // 머리
+    g.lineWidth=4*u; g.beginPath(); g.moveTo(-4*u,-4.5*u); g.lineTo(-1.5*u,3*u); g.stroke();   // 몸통
     g.lineWidth=3*u; g.beginPath();
-    g.moveTo(-6*u,-6*u); g.lineTo(-4*u,3*u); g.moveTo(-6*u,-3*u); g.lineTo(0,-4*u); g.moveTo(-6*u,-3*u); g.lineTo(-11*u,-1*u);
-    g.moveTo(-4*u,3*u); g.lineTo(1*u,10*u); g.moveTo(-4*u,3*u); g.lineTo(-9*u,11*u); g.stroke(); g.restore();
-    g.lineWidth=2.4*u; g.beginPath(); g.moveTo(10*u*dir,-13*u); g.lineTo(10*u*dir,13*u); g.stroke();
-    g.lineWidth=3*u; g.beginPath(); g.moveTo(2*u*dir,10*u); g.lineTo(13*u*dir,10*u); g.stroke();
-    g.beginPath(); g.moveTo(15*u*dir,10*u); g.lineTo(9*u*dir,6*u); g.lineTo(9*u*dir,14*u); g.closePath(); g.fill();
+    g.moveTo(-3.4*u,-1.5*u); g.lineTo(3.4*u,-3.5*u);                              // 앞팔
+    g.moveTo(-3.4*u,-1.5*u); g.lineTo(-9*u,0.5*u);                                // 뒷팔
+    g.stroke();
+    g.lineWidth=3.2*u; g.beginPath();
+    g.moveTo(-1.5*u,3*u); g.lineTo(4*u,6.5*u); g.lineTo(5*u,12.5*u);              // 앞다리
+    g.moveTo(-1.5*u,3*u); g.lineTo(-7.5*u,7*u); g.lineTo(-9.5*u,12.5*u);          // 뒷다리
+    g.stroke();
   } else if(type==='fire_ext'){ g.lineWidth=2.4*u; roundRectPath(g,-6*u,-6*u,12*u,18*u,3*u); g.fill();
     g.fillRect(-2.4*u,-12*u,4.8*u,6*u); g.lineWidth=2.4*u; g.beginPath(); g.moveTo(2.4*u,-10*u); g.lineTo(11*u,-13*u); g.stroke(); g.beginPath(); g.arc(12*u,-13*u,2.2*u,0,7); g.fill();
   } else if(type==='alarm'){ g.font=`bold ${26*u}px sans-serif`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('B',0,1*u); g.lineWidth=2*u; g.beginPath(); g.arc(0,0,15*u,0,7); g.stroke();
@@ -238,6 +244,7 @@ function clearSel(){ selSym=null; selText=null; selStair=null; selLine=null; sta
 let viewMode='plan';   // 'plan' | 'poster'
 let stairA=null, shiftDown=false;
 let zoom=1, panX=0, panY=0, panning=false, panLast=null;
+let posterZoom=1, posterPanX=0, posterPanY=0;
 
 function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)history.shift(); }
 function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=null; clearSel();
@@ -269,8 +276,8 @@ function contentBounds(){
   return {x:minX,y:minY,w:Math.max(1,maxX-minX),h:Math.max(1,maxY-minY)};
 }
 function viewport(){
-  if(viewMode==='poster'){ const b=contentBounds(); const s=Math.min(REGW/b.w,REGH/b.h);
-    return {ox:REGX+(REGW-b.w*s)/2-b.x*s, oy:REGY+(REGH-b.h*s)/2-b.y*s, s}; }
+  if(viewMode==='poster'){ const b=contentBounds(); const s=Math.min(REGW/b.w,REGH/b.h)*posterZoom;
+    return {ox:REGX+(REGW-b.w*s)/2-b.x*s+posterPanX, oy:REGY+(REGH-b.h*s)/2-b.y*s+posterPanY, s}; }
   const s=0.9*zoom;
   return {ox:(W-PLANW*s)/2+panX, oy:(H-PLANH*s)/2+panY, s};
 }
@@ -304,8 +311,8 @@ function constrainEnd(start,raw){
 }
 
 cv.addEventListener('mousedown',e=>{
+  if(e.button===1){ panning=true; panLast=pos(e); e.preventDefault(); return; }   // 가운데버튼 = 화면 이동(평면도·안내도 공통)
   if(viewMode!=='plan') return;
-  if(e.button===1){ panning=true; panLast=pos(e); e.preventDefault(); return; }   // 가운데버튼 = 화면 이동
   if(e.button!==0) return;
   const p=toLogical(pos(e));
   if(mode==='stair'){
@@ -337,8 +344,8 @@ cv.addEventListener('mousedown',e=>{
   }
 });
 cv.addEventListener('mousemove',e=>{
+  if(panning){ const m=pos(e); if(viewMode==='poster'){ posterPanX+=m.x-panLast.x; posterPanY+=m.y-panLast.y; } else { panX+=m.x-panLast.x; panY+=m.y-panLast.y; } panLast=m; draw(); return; }
   if(viewMode!=='plan') return;
-  if(panning){ const m=pos(e); panX+=m.x-panLast.x; panY+=m.y-panLast.y; panLast=m; draw(); return; }
   const p=toLogical(pos(e));
   if(stairGrab){ const s=state.stairs[stairGrab.i]; const g=stairGrab.corner;
     if(g){ if(g.ax)s.a.x=p.x; if(g.ay)s.a.y=p.y; if(g.bx)s.b.x=p.x; if(g.by)s.b.y=p.y; }
@@ -354,8 +361,10 @@ cv.addEventListener('mousemove',e=>{
 });
 window.addEventListener('mouseup',()=>{ panning=false; sel=null; stairGrab=null; lineGrab=null; });
 // 휠 확대·축소 (커서 기준)
-cv.addEventListener('wheel',e=>{ if(viewMode!=='plan')return; e.preventDefault();
+cv.addEventListener('wheel',e=>{ e.preventDefault();
   const m=pos(e), before=toLogical(m);
+  if(viewMode==='poster'){ posterZoom=Math.max(0.3,Math.min(5, posterZoom*(e.deltaY<0?1.1:1/1.1)));
+    const a=viewport(); posterPanX+=m.x-(a.ox+before.x*a.s); posterPanY+=m.y-(a.oy+before.y*a.s); draw(); return; }
   zoom=Math.max(0.12,Math.min(6, zoom*(e.deltaY<0?1.12:1/1.12)));
   const a=viewport(); panX+=m.x-(a.ox+before.x*a.s); panY+=m.y-(a.oy+before.y*a.s); draw();
 },{passive:false});
@@ -373,7 +382,7 @@ $('routeW').addEventListener('input',()=>{ $('routeWv').textContent=$('routeW').
 $('symSize').addEventListener('input',()=>{ $('symSizeV').textContent=$('symSize').value; if(selSym!=null&&state.symbols[selSym]){ state.symbols[selSym].size=+$('symSize').value; draw(); } });
 $('textSize').addEventListener('input',()=>{ $('textSizeV').textContent=$('textSize').value; if(selText!=null&&state.texts[selText]){ state.texts[selText].size=+$('textSize').value; draw(); } });
 $('dimOn').addEventListener('change',draw);
-$('scalePx').addEventListener('input',draw);
+$('mmPerPx').addEventListener('input',draw);
 function eraseAt(p){ const v=viewport(); const near=14/v.s;
   for(let i=state.symbols.length-1;i>=0;i--){ const sz=state.symbols[i].size||42; if(dist(p,state.symbols[i])<Math.max(sz*0.62,18/v.s)){snapshot();state.symbols.splice(i,1);selSym=null;return draw();} }
   for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<Math.max(34,30/v.s)){snapshot();state.texts.splice(i,1);return draw();}
@@ -387,7 +396,7 @@ window.addEventListener('keydown',e=>{
   if(e.key==='Escape')onEsc();
   else if(e.key==='Enter')finishLine();
   else if(e.key==='Shift')shiftDown=true;
-  else if(e.key==='0'){ zoom=1; panX=0; panY=0; draw(); }
+  else if(e.key==='0'){ if(viewMode==='poster'){ posterZoom=1; posterPanX=0; posterPanY=0; } else { zoom=1; panX=0; panY=0; } draw(); }
 });
 window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
 
@@ -404,7 +413,7 @@ function drawPolyline(pts,color,w,arrow){
 }
 function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
   ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.42),y-s*Math.sin(an-0.42)); ctx.lineTo(x-s*Math.cos(an+0.42),y-s*Math.sin(an+0.42)); ctx.closePath(); ctx.fill(); }
-function fmtLen(len){ const sp=parseFloat(($('scalePx').value||'').trim()); if(!isNaN(sp)&&sp>0) return (len/sp).toFixed(2)+' m'; return Math.round(len)+''; }
+function fmtLen(len){ const f=parseFloat(($('mmPerPx').value||'1').trim()); const mm=len*((isNaN(f)||f<=0)?1:f); return Math.round(mm)+''; }
 function drawDim(a,b,s){ const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy); if(len<10/s)return;
   const ang=Math.atan2(dy,dx), off=13/s, ox=-Math.sin(ang)*off, oy=Math.cos(ang)*off;
   ctx.save(); ctx.translate((a.x+b.x)/2+ox,(a.y+b.y)/2+oy); let ra=ang; if(ra>Math.PI/2)ra-=Math.PI; if(ra<-Math.PI/2)ra+=Math.PI; ctx.rotate(ra);
@@ -532,7 +541,7 @@ function setView(m){ viewMode=m; draft=null; sel=null; previewPoint=null;
   $('modePlan').classList.toggle('active',m==='plan'); $('modePoster').classList.toggle('active',m==='poster');
   const t=document.querySelector('.tools'); t.style.opacity=m==='plan'?'1':'0.4'; t.style.pointerEvents=m==='plan'?'auto':'none';
   cv.style.cursor=m==='plan'?((mode==='select')?'move':'crosshair'):'default';
-  statusMsg(m==='plan'?'① 평면도 그리기 모드 — 도면을 그린 뒤 ②로 넘어가세요.':'② 안내도 완성 — 저장/인쇄하세요. 편집은 ①에서.'); draw();
+  statusMsg(m==='plan'?'① 평면도 그리기 모드 — 도면을 그린 뒤 ②로 넘어가세요.':'② 안내도 완성 — 휠=확대/축소, 가운데버튼=이동, 0=자동맞춤. 저장/인쇄는 여기서.'); draw();
 }
 $('modePlan').addEventListener('click',()=>setView('plan'));
 $('modePoster').addEventListener('click',()=>setView('poster'));
