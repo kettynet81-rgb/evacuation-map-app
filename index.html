@@ -53,7 +53,7 @@
   <h1>🚨 피난안내도 편집기</h1>
   <div class="meta">
     <input class="b" id="mBld" placeholder="위치/장소 (예: 제조기술동)" value="">
-    <input class="s" id="mFloor" placeholder="층" value="1F">
+    <input class="s" id="mFloor" placeholder="층(예:1F)" value="">
     <input class="s" id="mDate" placeholder="작성일" value="">
   </div>
   <div class="modeswitch">
@@ -503,14 +503,16 @@ function drawStepList(g,title,titleEn,steps,x,y,w){
 function greenCross(cx,cy,r){ ctx.fillStyle='#16a34a'; ctx.fillRect(cx-r,cy-r*0.36,r*2,r*0.72); ctx.fillRect(cx-r*0.36,cy-r,r*0.72,r*2); }
 function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'';
   if(th.head==='gray'){
-    ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.moveTo(196,16); ctx.lineTo(432,16); ctx.lineTo(400,HEADER_H-16); ctx.lineTo(164,HEADER_H-16); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#c7ccd3'; ctx.beginPath(); ctx.moveTo(438,16); ctx.lineTo(486,16); ctx.lineTo(454,HEADER_H-16); ctx.lineTo(406,HEADER_H-16); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#111'; ctx.font='900 34px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText('피난안내도',22,HEADER_H/2);
-    // 우측: 회사 로고 + 위치·층
-    let rx=W-20;
-    if(LOGO_CO.complete && LOGO_CO.naturalWidth){ const lh=40, lw=LOGO_CO.naturalWidth*lh/LOGO_CO.naturalHeight; ctx.drawImage(LOGO_CO, rx-lw, HEADER_H/2-lh/2, lw, lh); rx-=lw+16; }
-    const info=[bld,($('mFloor').value||'').trim()].filter(Boolean).join('   ');
-    ctx.fillStyle='#111'; ctx.font='bold 20px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(info,rx,HEADER_H/2);
+    // 제목 + 영문 부제
+    ctx.font='900 32px "Malgun Gothic",sans-serif'; const tw=ctx.measureText('피난안내도').width;
+    ctx.fillStyle='#111'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('피난안내도',22,HEADER_H/2+4);
+    ctx.fillStyle='#9aa1ab'; ctx.font='bold 9.5px sans-serif'; ctx.fillText('EMERGENCY EVACUATION MAP',24,HEADER_H/2+20);
+    // 제목 바로 뒤 2톤 각진 배너 (진회색 + 연회색)
+    const bx=22+tw+20, by0=14, by1=HEADER_H-14, sk=20;
+    ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.moveTo(bx,by0); ctx.lineTo(bx+224,by0); ctx.lineTo(bx+224-sk,by1); ctx.lineTo(bx-sk,by1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#c7ccd3'; ctx.beginPath(); ctx.moveTo(bx+232,by0); ctx.lineTo(bx+276,by0); ctx.lineTo(bx+276-sk,by1); ctx.lineTo(bx+232-sk,by1); ctx.closePath(); ctx.fill();
+    // 우측: 위치/장소 (입력값)
+    ctx.fillStyle='#111'; ctx.font='bold 22px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(bld,W-22,HEADER_H/2);
     ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,HEADER_H); ctx.lineTo(W,HEADER_H); ctx.stroke();
   } else {
     ctx.fillStyle=th.head; ctx.fillRect(0,0,W,HEADER_H); ctx.fillStyle='#fff'; ctx.textBaseline='middle';
