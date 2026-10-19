@@ -208,26 +208,23 @@ function drawDoor(g,type,x,y,S,rot,small){
   const L=(a,b,c,d)=>{ g.beginPath(); g.moveTo(a,b); g.lineTo(c,d); g.stroke(); };
   const arrow=(x1,y1,x2,y2)=>{ L(x1,y1,x2,y2); const an=Math.atan2(y2-y1,x2-x1), h=Math.max(4,S*0.06);
     g.beginPath(); g.moveTo(x2,y2); g.lineTo(x2-h*Math.cos(an-0.5),y2-h*Math.sin(an-0.5)); g.lineTo(x2-h*Math.cos(an+0.5),y2-h*Math.sin(an+0.5)); g.closePath(); g.fill(); };
-  g.fillStyle=small?'#fff':DOOR_BG; g.fillRect(-S/2,-t/2,S,t);                 // 벽 끊기
   g.strokeStyle='#111'; g.fillStyle='#111'; g.lineWidth=lw; g.lineCap='butt';
-  L(-S/2,-t/2,-S/2,t/2); L(S/2,-t/2,S/2,t/2);                     // 문틀
+  if(type==='door_swing'){ g.fillStyle=small?'#fff':DOOR_BG; g.fillRect(-S/2,-t/2,S,t);   // 벽 끊기 (여닫이만)
+    g.fillStyle='#111'; L(-S/2,-t/2,-S/2,t/2); L(S/2,-t/2,S/2,t/2); }                     // 문틀
   const cap=(txt)=>{ if(small) return; g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(txt,0,t/2+Math.max(3,S*0.05)); };
   if(type==='door_swing'){
     g.fillStyle='rgba(37,99,235,.13)'; g.beginPath(); g.moveTo(-S/2,-t/2); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.closePath(); g.fill();   // 열림 영역(옅은 파랑)
     g.strokeStyle='#2563eb'; g.lineWidth=Math.max(1.2,lw*0.9); g.setLineDash([Math.max(4,S*0.06),Math.max(3,S*0.04)]); g.beginPath(); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.stroke(); g.setLineDash([]);   // 열림 궤적
     const lt=Math.max(4,S*0.06); g.fillStyle='#111'; g.fillRect(-S/2,-t/2-S,lt,S);   // 문짝(굵은 검정)
-  } else if(type==='door_slide'){
-    const pt=Math.max(3,t*0.3), pl=S*0.56; g.fillStyle='#4b5563';
-    g.fillRect(-S/2,-pt,pl,pt); g.strokeRect(-S/2,-pt,pl,pt);
-    g.fillRect(S/2-pl,0,pl,pt); g.strokeRect(S/2-pl,0,pl,pt);
-    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.05,ay,-S*0.38,ay); arrow(S*0.05,ay,S*0.38,ay);
-    cap('Sliding door');
   } else {
-    const pt=Math.max(3,t*0.3), gap=Math.max(1.5,S*0.015), pl=S/2-gap; g.fillStyle='#4b5563';
-    g.fillRect(-S/2,-pt/2,pl,pt); g.strokeRect(-S/2,-pt/2,pl,pt);
-    g.fillRect(gap,-pt/2,pl,pt); g.strokeRect(gap,-pt/2,pl,pt);
-    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.04,ay,-S*0.4,ay); arrow(S*0.04,ay,S*0.4,ay);
-    cap('Auto door');
+    // 미닫이·자동문: 벽은 그대로 두고 흰 문짝을 벽 위에 얹음
+    const ph=Math.max(DOOR_WALL+4, S*0.07), off=type==='door_slide'?ph*0.32:0, pl=type==='door_slide'?S*0.56:S/2-Math.max(1.5,S*0.015);
+    g.fillStyle='#fff'; g.lineWidth=Math.max(1.4,lw*0.9);
+    if(type==='door_slide'){ g.fillRect(-S/2,-ph/2-off,pl,ph); g.strokeRect(-S/2,-ph/2-off,pl,ph); g.fillRect(S/2-pl,-ph/2+off,pl,ph); g.strokeRect(S/2-pl,-ph/2+off,pl,ph); }
+    else { g.fillRect(-S/2,-ph/2,pl,ph); g.strokeRect(-S/2,-ph/2,pl,ph); g.fillRect(S/2-pl,-ph/2,pl,ph); g.strokeRect(S/2-pl,-ph/2,pl,ph); }
+    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-ph/2-off-Math.max(5,S*0.1), d=type==='door_slide'?0.38:0.4;
+    arrow(-S*0.05,ay,-S*d,ay); arrow(S*0.05,ay,S*d,ay);
+    if(!small){ g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(type==='door_slide'?'Sliding door':'Auto door',0,ph/2+off+Math.max(3,S*0.05)); }
   }
   g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
