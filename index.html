@@ -747,8 +747,7 @@ function proLegend(){ const R=proRegion(), x=R.cx, y=R.legY, w=R.cw, h=PRO.LGH;
   ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=`800 17px ${FONT}`; ctx.fillText('범 례',x+59,y+24);
   ctx.font=`700 9.5px ${FONT}`; ctx.letterSpacing='2.5px'; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillText('LEGEND',x+60,y+42); ctx.letterSpacing='0px';
   const used=new Set((state.symbols||[]).map(s=>s.type)); const base=['here','exit','fire_ext','alarm'];
-  const items=[{kind:'route',label:'피난동선'}, ...base.map(t=>({type:t})), ...Object.keys(SYMBOLS).filter(t=>!base.includes(t)&&used.has(t)).map(t=>({type:t}))];
-  if((state.stairs||[]).length) items.push({kind:'stair',label:'계단'});
+  const items=[{kind:'route',label:'피난동선'}, ...base.map(t=>({type:t})), ...Object.keys(SYMBOLS).filter(t=>!base.includes(t)&&used.has(t)&&!SYMBOLS[t].arch).map(t=>({type:t}))];   // 문·계단은 도면 기호라 범례에서 제외
   const lab=it=>it.label||SYMBOLS[it.type].label; ctx.font=`700 14px ${FONT}`;
   const iw=it=>(it.kind==='route'?40:30)+8+ctx.measureText(lab(it)).width;
   const x0=x+118+24, avail=w-118-48, tot=items.reduce((a,it)=>a+iw(it),0); const gap=Math.max(14,Math.min(46,(avail-tot)/Math.max(1,items.length-1)));
