@@ -200,7 +200,7 @@ const SYMBOLS={
   firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'대피장소',color:C.exitGreen},
   door_swing:{label:'여닫이문',color:'#111',arch:true}, door_slide:{label:'미닫이문',color:'#111',arch:true}, door_auto:{label:'자동문',color:'#111',arch:true},
 };
-let DOOR_WALL=7;   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
+let DOOR_WALL=7, DOOR_BG='#fff';   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
 // 문 = 도면 기호. 가로 방향(폭 S)이 기본, 회전으로 세로 벽에 맞춤
 function drawDoor(g,type,x,y,S,rot,small){
   g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180);
@@ -208,7 +208,7 @@ function drawDoor(g,type,x,y,S,rot,small){
   const L=(a,b,c,d)=>{ g.beginPath(); g.moveTo(a,b); g.lineTo(c,d); g.stroke(); };
   const arrow=(x1,y1,x2,y2)=>{ L(x1,y1,x2,y2); const an=Math.atan2(y2-y1,x2-x1), h=Math.max(4,S*0.06);
     g.beginPath(); g.moveTo(x2,y2); g.lineTo(x2-h*Math.cos(an-0.5),y2-h*Math.sin(an-0.5)); g.lineTo(x2-h*Math.cos(an+0.5),y2-h*Math.sin(an+0.5)); g.closePath(); g.fill(); };
-  g.fillStyle='#fff'; g.fillRect(-S/2,-t/2,S,t);                 // 벽 끊기
+  g.fillStyle=small?'#fff':DOOR_BG; g.fillRect(-S/2,-t/2,S,t);                 // 벽 끊기
   g.strokeStyle='#111'; g.fillStyle='#111'; g.lineWidth=lw; g.lineCap='butt';
   L(-S/2,-t/2,-S/2,t/2); L(S/2,-t/2,S/2,t/2);                     // 문틀
   const cap=(txt)=>{ if(small) return; g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(txt,0,t/2+Math.max(3,S*0.05)); };
@@ -523,11 +523,13 @@ function drawPlanContent(v){
     ctx.globalAlpha=0.92; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
   (state.stairs||[]).forEach(s=>drawStair(s.a,s.b));
   state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
+  DOOR_BG=viewMode==='poster'?(TH[theme].plan||'#fff'):'#fbfcfe'; DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7);
+  state.symbols.forEach(s=>{ if(SYMBOLS[s.type]&&SYMBOLS[s.type].arch) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0); });   // 문은 벽 위·동선 아래
   state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ const fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
     ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(-tw/2-4,-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,0,0); ctx.restore(); });
-  DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7); state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0));
+  state.symbols.forEach(s=>{ if(!(SYMBOLS[s.type]&&SYMBOLS[s.type].arch)) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0); });
   if(viewMode==='plan'){
     if($('dimOn').checked) state.walls.forEach(wl=>{ for(let j=0;j<wl.points.length-1;j++) drawDim(wl.points[j],wl.points[j+1],v.s); });
     if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; const ln=arr[selLine.i]; if(ln) for(let j=0;j<ln.points.length-1;j++) drawDim(ln.points[j],ln.points[j+1],v.s); }
