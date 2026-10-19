@@ -218,14 +218,21 @@ function drawDoor(g,type,x,y,S,rot,small,flip){
     g.strokeStyle='#2563eb'; g.lineWidth=Math.max(1.2,lw*0.9); g.setLineDash([Math.max(4,S*0.06),Math.max(3,S*0.04)]); g.beginPath(); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.stroke(); g.setLineDash([]);   // 열림 궤적
     const lt=Math.max(4,S*0.06); g.fillStyle='#111'; g.fillRect(-S/2,-t/2-S,lt,S);   // 문짝(굵은 검정)
   } else {
-    // 미닫이·자동문: 벽은 그대로 두고 흰 문짝을 벽 위에 얹음
-    const ph=Math.max(DOOR_WALL+4, S*0.07), off=type==='door_slide'?ph*0.32:0, pl=type==='door_slide'?S*0.56:S/2-Math.max(1.5,S*0.015);
-    g.fillStyle='#fff'; g.lineWidth=Math.max(1.4,lw*0.9);
-    if(type==='door_slide'){ g.fillRect(-S/2,-ph/2-off,pl,ph); g.strokeRect(-S/2,-ph/2-off,pl,ph); g.fillRect(S/2-pl,-ph/2+off,pl,ph); g.strokeRect(S/2-pl,-ph/2+off,pl,ph); }
-    else { g.fillRect(-S/2,-ph/2,pl,ph); g.strokeRect(-S/2,-ph/2,pl,ph); g.fillRect(S/2-pl,-ph/2,pl,ph); g.strokeRect(S/2-pl,-ph/2,pl,ph); }
-    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-ph/2-off-Math.max(5,S*0.1), d=type==='door_slide'?0.38:0.4;
-    arrow(-S*0.05,ay,-S*d,ay); arrow(S*0.05,ay,S*d,ay);
-    if(!small){ g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(type==='door_slide'?'Sliding door':'Auto door',0,ph/2+off+Math.max(3,S*0.05)); }
+    // 미닫이·자동문 (표준 평면 기호): 벽 두께 안을 흰색으로 비우고, 그 안에 얇은 문짝
+    const tw=Math.max(DOOR_WALL, S*0.08), pt=tw*0.42, ov=S*0.06;
+    g.fillStyle=small?'#fff':DOOR_BG; g.fillRect(-S/2,-tw/2,S,tw);
+    g.strokeStyle='#111'; g.lineWidth=Math.max(1.2,lw*0.8); L(-S/2,-tw/2,-S/2,tw/2); L(S/2,-tw/2,S/2,tw/2);   // 문틀
+    g.fillStyle='#fff'; g.lineWidth=Math.max(1.2,lw*0.7);
+    if(type==='door_slide'){   // 쌍미닫이: 두 문짝이 앞뒤 레일에서 가운데 겹침
+      g.fillRect(-S/2,-tw/2+tw*0.04,S/2+ov,pt); g.strokeRect(-S/2,-tw/2+tw*0.04,S/2+ov,pt);
+      g.fillRect(-ov,tw/2-tw*0.04-pt,S/2+ov,pt); g.strokeRect(-ov,tw/2-tw*0.04-pt,S/2+ov,pt);
+    } else {                   // 자동문: 가운데서 갈라지는 두 문짝
+      g.fillRect(-S/2,-pt/2,S/2,pt); g.strokeRect(-S/2,-pt/2,S/2,pt); g.fillRect(0,-pt/2,S/2,pt); g.strokeRect(0,-pt/2,S/2,pt);
+    }
+    g.fillStyle='#111'; g.strokeStyle='#111'; g.lineWidth=Math.max(1,lw*0.6); const ay=-tw/2-Math.max(5,S*0.08);
+    if(type==='door_slide'){ arrow(-S*0.1,ay,-S*0.38,ay); arrow(S*0.1,ay,S*0.38,ay); }
+    else { arrow(-S*0.04,ay,-S*0.38,ay); arrow(S*0.04,ay,S*0.38,ay); }
+    if(!small){ g.font='italic '+Math.max(9,S*0.11)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(type==='door_slide'?'Sliding door':'Auto door',0,tw/2+Math.max(3,S*0.04)); }
   }
   g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
@@ -747,7 +754,7 @@ function proLegend(){ const R=proRegion(), x=R.cx, y=R.legY, w=R.cw, h=PRO.LGH;
   ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=`800 17px ${FONT}`; ctx.fillText('범 례',x+59,y+24);
   ctx.font=`700 9.5px ${FONT}`; ctx.letterSpacing='2.5px'; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillText('LEGEND',x+60,y+42); ctx.letterSpacing='0px';
   const used=new Set((state.symbols||[]).map(s=>s.type)); const base=['here','exit','fire_ext','alarm'];
-  const items=[{kind:'route',label:'피난동선'}, ...base.map(t=>({type:t})), ...Object.keys(SYMBOLS).filter(t=>!base.includes(t)&&used.has(t)&&!SYMBOLS[t].arch).map(t=>({type:t}))];   // 문·계단은 도면 기호라 범례에서 제외
+  const items=[{kind:'route',label:'피난동선'}, ...base.map(t=>({type:t})), ...Object.keys(SYMBOLS).filter(t=>!base.includes(t)&&used.has(t)&&!SYMBOLS[t].arch&&!['restroom','restroom_m','restroom_w','elevator'].includes(t)).map(t=>({type:t}))];   // 문·계단·화장실·엘리베이터는 범례에서 제외 (안전 표시만)
   const lab=it=>it.label||SYMBOLS[it.type].label; ctx.font=`700 14px ${FONT}`;
   const iw=it=>(it.kind==='route'?40:30)+8+ctx.measureText(lab(it)).width;
   const x0=x+118+24, avail=w-118-48, tot=items.reduce((a,it)=>a+iw(it),0); const gap=Math.max(14,Math.min(46,(avail-tot)/Math.max(1,items.length-1)));
