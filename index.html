@@ -130,7 +130,7 @@
       <button class="abtn" id="wallAll">벽 전체에 적용</button>
       <button class="abtn" id="routeAll">동선 전체에 적용</button>
     </div>
-    <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택하면 그 심볼도 조절</label>
+    <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택 후 슬라이더 또는 모서리 □ 드래그로 조절</label>
     <input type="range" id="symSize" min="18" max="300" value="42">
     <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="dimOn"> 치수(길이) 표시</label>
     <label class="cadlbl">치수 배율 · 1 px = <input type="text" id="mmPerPx" value="1" style="width:56px;display:inline-block;"> mm</label>
@@ -213,16 +213,17 @@ function drawDoor(g,type,x,y,S,rot,small){
   L(-S/2,-t/2,-S/2,t/2); L(S/2,-t/2,S/2,t/2);                     // 문틀
   const cap=(txt)=>{ if(small) return; g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(txt,0,t/2+Math.max(3,S*0.05)); };
   if(type==='door_swing'){
-    g.lineWidth=lw*1.6; L(-S/2,-t/2,-S/2,-t/2-S);                 // 문짝
-    g.lineWidth=lw*0.8; g.beginPath(); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.stroke();   // 열림 궤적
+    g.fillStyle='rgba(37,99,235,.13)'; g.beginPath(); g.moveTo(-S/2,-t/2); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.closePath(); g.fill();   // 열림 영역(옅은 파랑)
+    g.strokeStyle='#2563eb'; g.lineWidth=Math.max(1.2,lw*0.9); g.setLineDash([Math.max(4,S*0.06),Math.max(3,S*0.04)]); g.beginPath(); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.stroke(); g.setLineDash([]);   // 열림 궤적
+    const lt=Math.max(4,S*0.06); g.fillStyle='#111'; g.fillRect(-S/2,-t/2-S,lt,S);   // 문짝(굵은 검정)
   } else if(type==='door_slide'){
-    const pt=Math.max(3,t*0.3), pl=S*0.56; g.fillStyle='#d1d5db';
+    const pt=Math.max(3,t*0.3), pl=S*0.56; g.fillStyle='#4b5563';
     g.fillRect(-S/2,-pt,pl,pt); g.strokeRect(-S/2,-pt,pl,pt);
     g.fillRect(S/2-pl,0,pl,pt); g.strokeRect(S/2-pl,0,pl,pt);
     g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.05,ay,-S*0.38,ay); arrow(S*0.05,ay,S*0.38,ay);
     cap('Sliding door');
   } else {
-    const pt=Math.max(3,t*0.3), gap=Math.max(1.5,S*0.015), pl=S/2-gap; g.fillStyle='#d1d5db';
+    const pt=Math.max(3,t*0.3), gap=Math.max(1.5,S*0.015), pl=S/2-gap; g.fillStyle='#4b5563';
     g.fillRect(-S/2,-pt/2,pl,pt); g.strokeRect(-S/2,-pt/2,pl,pt);
     g.fillRect(gap,-pt/2,pl,pt); g.strokeRect(gap,-pt/2,pl,pt);
     g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.04,ay,-S*0.4,ay); arrow(S*0.04,ay,S*0.4,ay);
@@ -298,7 +299,7 @@ let state={walls:[],routes:[],symbols:[],texts:[],stairs:[]};
 let bgImg=null, bgData=null;
 let mode='select', currentSymbol=null;
 let draft=null, sel=null, dragOff=null, previewPoint=null, selSym=null, selStair=null, stairGrab=null, selText=null, selLine=null, lineGrab=null;
-let history=[];
+let history=[]; let symResize=null;
 function clearSel(){ selSym=null; selText=null; selStair=null; selLine=null; stairGrab=null; lineGrab=null; }
 let viewMode='plan';   // 'plan' | 'poster'
 let stairA=null, shiftDown=false;
@@ -387,6 +388,9 @@ cv.addEventListener('mousedown',e=>{
   if(mode==='erase'){ eraseAt(p); return; }
   if(mode==='select'){
     const v=viewport();
+    if(selSym!=null&&state.symbols[selSym]){ const s=state.symbols[selSym], sz=(s.size||42)*0.64, an=-(s.rot||0)*Math.PI/180;
+      const dx=p.x-s.x, dy=p.y-s.y, lx=dx*Math.cos(an)-dy*Math.sin(an), ly=dx*Math.sin(an)+dy*Math.cos(an), ht=10/v.s;
+      if(Math.abs(Math.abs(lx)-sz)<ht&&Math.abs(Math.abs(ly)-sz)<ht){ snapshot(); symResize={i:selSym}; return; } }
     for(let i=state.symbols.length-1;i>=0;i--){ const sz=state.symbols[i].size||42; if(dist(p,state.symbols[i])<Math.max(sz*0.62,18/v.s)){ clearSel(); sel={kind:'sym',i}; selSym=i; dragOff={x:p.x-state.symbols[i].x,y:p.y-state.symbols[i].y}; snapshot(); $('symSize').value=sz; $('symSizeV').textContent=sz; draw(); return; } }
     for(let i=state.texts.length-1;i>=0;i--){ const ts=state.texts[i].size||16; if(dist(p,state.texts[i])<Math.max(ts*1.5,24/v.s)){ clearSel(); sel={kind:'txt',i}; selText=i; dragOff={x:p.x-state.texts[i].x,y:p.y-state.texts[i].y}; snapshot(); $('textSize').value=ts; $('textSizeV').textContent=ts; draw(); return; } }
     for(let i=(state.stairs||[]).length-1;i>=0;i--){ const s=state.stairs[i]; const ct=14/v.s;
@@ -415,10 +419,13 @@ cv.addEventListener('mousemove',e=>{
     else { const dx=p.x-lineGrab.last.x, dy=p.y-lineGrab.last.y; ln.points.forEach(pt=>{pt.x+=dx;pt.y+=dy;}); }
     lineGrab.last={x:p.x,y:p.y}; draw(); return; }
   if(mode==='stair'&&stairA){ previewPoint={x:p.x,y:p.y}; draw(); return; }
+  if(symResize){ const s=state.symbols[symResize.i]; if(s){ const an=-(s.rot||0)*Math.PI/180, dx=p.x-s.x, dy=p.y-s.y;
+      const lx=dx*Math.cos(an)-dy*Math.sin(an), ly=dx*Math.sin(an)+dy*Math.cos(an);
+      const ns=Math.round(Math.max(12,Math.min(800,Math.max(Math.abs(lx),Math.abs(ly))/0.64))); s.size=ns; $('symSize').value=Math.min(ns,+$('symSize').max); $('symSizeV').textContent=ns; draw(); } return; }
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=p.x-dragOff.x; o.y=p.y-dragOff.y; draw(); return; }
   if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
 });
-window.addEventListener('mouseup',()=>{ panning=false; sel=null; stairGrab=null; lineGrab=null; });
+window.addEventListener('mouseup',()=>{ panning=false; symResize=null; sel=null; stairGrab=null; lineGrab=null; });
 // 휠 확대·축소 (커서 기준)
 cv.addEventListener('wheel',e=>{ e.preventDefault();
   const m=pos(e), before=toLogical(m);
@@ -527,7 +534,7 @@ function drawPlanContent(v){
   }
   if(viewMode==='plan'){ const HS=6/v.s;
     if(selSym!=null&&state.symbols[selSym]){ const s=state.symbols[selSym], sz=(s.size||42)*0.64;
-      ctx.save(); ctx.translate(s.x,s.y); if(s.rot) ctx.rotate(s.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-sz,-sz,sz*2,sz*2); ctx.restore(); }
+      ctx.save(); ctx.translate(s.x,s.y); if(s.rot) ctx.rotate(s.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-sz,-sz,sz*2,sz*2); ctx.setLineDash([]); const hh=5/v.s; ctx.fillStyle='#fff'; ctx.lineWidth=1.6/v.s; [[-sz,-sz],[sz,-sz],[sz,sz],[-sz,sz]].forEach(([hx,hy])=>{ ctx.fillRect(hx-hh,hy-hh,hh*2,hh*2); ctx.strokeRect(hx-hh,hy-hh,hh*2,hh*2); }); ctx.restore(); }
     if(selText!=null&&state.texts[selText]){ const t=state.texts[selText], fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; const tw=ctx.measureText(t.text).width;
       ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-tw/2-6,-fs*0.85,tw+12,fs*1.7); ctx.restore(); }
     if(selStair!=null&&(state.stairs||[])[selStair]){ const s=state.stairs[selStair]; const x=Math.min(s.a.x,s.b.x),y=Math.min(s.a.y,s.b.y),w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
@@ -737,6 +744,7 @@ function proLegend(){ const R=proRegion(), x=R.cx, y=R.legY, w=R.cw, h=PRO.LGH;
     if(it.kind==='route'){ ctx.strokeStyle=C.routeGreen; ctx.lineWidth=7; ctx.lineCap='butt'; ctx.beginPath(); ctx.moveTo(lx,cy); ctx.lineTo(lx+26,cy); ctx.stroke();
       ctx.fillStyle=C.routeGreen; ctx.beginPath(); ctx.moveTo(lx+40,cy); ctx.lineTo(lx+25,cy-10); ctx.lineTo(lx+25,cy+10); ctx.closePath(); ctx.fill(); }
     else if(it.kind==='stair'){ ctx.strokeStyle=C.wall; ctx.lineWidth=1.8; ctx.strokeRect(lx+1,cy-10,28,20); ctx.lineWidth=1.2; for(let i=1;i<5;i++){ ctx.beginPath(); ctx.moveTo(lx+1+i*5.6,cy-10); ctx.lineTo(lx+1+i*5.6,cy+10); ctx.stroke(); } }
+    else if(SYMBOLS[it.type].arch){ const S=it.type==='door_swing'?26:30; drawSymbol(ctx,it.type,lx+15,it.type==='door_swing'?cy+S/2-2:cy,S,false); }
     else drawSymbol(ctx,it.type,lx+15,cy,30,false);
     const ix=(it.kind==='route'?40:30)+8; ctx.fillStyle=PRO.ink; ctx.font=`700 14px ${FONT}`; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(lab(it),lx+ix,cy+1);
     lx+=iw(it)+gap; }); }
