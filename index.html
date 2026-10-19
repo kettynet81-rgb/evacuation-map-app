@@ -487,42 +487,45 @@ const TH={
   blue:    { plan:'#ffffff', head:'#16357a', accent:'#16357a', bar:true,  legend:'bottom' },
 };
 function drawStepList(g,title,titleEn,steps,x,y,w){
-  const ac=TH[theme].accent, bar=TH[theme].bar;
-  if(bar){ g.fillStyle=ac; g.fillRect(x,y,w,26); g.fillStyle='#fff'; g.textAlign='left'; g.textBaseline='middle';
-    g.font='bold 13px "Malgun Gothic",sans-serif'; g.fillText(title,x+8,y+9); g.font='9px sans-serif'; g.fillText(titleEn,x+8,y+20); }
-  else { g.fillStyle='#111'; g.textAlign='left'; g.textBaseline='alphabetic'; g.font='900 15px "Malgun Gothic",sans-serif'; g.fillText(title,x+2,y+13);
-    g.fillStyle='#9aa1ab'; g.font='8px sans-serif'; g.fillText(titleEn,x+2,y+23);
-    g.strokeStyle='#111'; g.lineWidth=2; g.beginPath(); g.moveTo(x,y+28); g.lineTo(x+w,y+28); g.stroke(); }
-  let cy=y+40;
-  steps.forEach((s,i)=>{ g.fillStyle=ac; g.beginPath(); g.arc(x+13,cy+8,10,0,7); g.fill();
-    g.fillStyle='#fff'; g.font='bold 12px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),x+13,cy+9);
-    g.textAlign='left'; g.fillStyle='#1f2430'; g.font='bold 12px "Malgun Gothic",sans-serif'; g.fillText(s[0],x+30,cy+5);
-    g.fillStyle='#8a93a6'; g.font='9px sans-serif'; const endY=wrapText(g,s[1],x+30,cy+19,w-34,11); cy=Math.max(cy+40,endY+15); });
+  const ac=TH[theme].accent, bar=TH[theme].bar, tx=x+32, tw=w-34;
+  if(bar){ g.fillStyle=ac; g.fillRect(x,y,w,32); g.fillStyle='#fff'; g.textAlign='left'; g.textBaseline='middle';
+    g.font='bold 16px "Malgun Gothic",sans-serif'; g.fillText(title,x+10,y+11); g.font='10px sans-serif'; g.fillText(titleEn,x+10,y+25); }
+  else { g.fillStyle='#111'; g.textAlign='left'; g.textBaseline='alphabetic'; g.font='900 18px "Malgun Gothic",sans-serif'; g.fillText(title,x+2,y+17);
+    g.fillStyle='#9aa1ab'; g.font='9.5px sans-serif'; g.fillText(titleEn,x+2,y+29);
+    g.strokeStyle='#111'; g.lineWidth=2; g.beginPath(); g.moveTo(x,y+35); g.lineTo(x+w,y+35); g.stroke(); }
+  let cy=y+48;
+  steps.forEach((s,i)=>{ g.fillStyle=ac; g.beginPath(); g.arc(x+12,cy+9,11,0,7); g.fill();
+    g.fillStyle='#fff'; g.font='bold 13px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),x+12,cy+10);
+    g.textAlign='left'; g.textBaseline='middle'; g.fillStyle='#1f2430'; g.font='bold 15px "Malgun Gothic",sans-serif';
+    const kEnd=wrapText(g,s[0],tx,cy+9,tw,19);
+    g.fillStyle='#8a93a6'; g.font='11px sans-serif'; const eEnd=wrapText(g,s[1],tx,kEnd+18,tw,13);
+    cy=Math.max(cy+44,eEnd+20); });
   return cy;
 }
 function greenCross(cx,cy,r){ ctx.fillStyle='#16a34a'; ctx.fillRect(cx-r,cy-r*0.36,r*2,r*0.72); ctx.fillRect(cx-r*0.36,cy-r,r*0.72,r*2); }
-function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'';
-  if(th.head==='gray'){
-    // 제목 + 영문 부제
-    ctx.font='900 32px "Malgun Gothic",sans-serif'; const tw=ctx.measureText('피난안내도').width;
-    ctx.fillStyle='#111'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('피난안내도',22,HEADER_H/2+4);
-    ctx.fillStyle='#9aa1ab'; ctx.font='bold 9.5px sans-serif'; ctx.fillText('EMERGENCY EVACUATION MAP',24,HEADER_H/2+20);
-    // 제목 바로 뒤 2톤 각진 배너 (진회색 + 연회색)
-    const bx=22+tw+20, by0=14, by1=HEADER_H-14, sk=20;
-    ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.moveTo(bx,by0); ctx.lineTo(bx+224,by0); ctx.lineTo(bx+224-sk,by1); ctx.lineTo(bx-sk,by1); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#c7ccd3'; ctx.beginPath(); ctx.moveTo(bx+232,by0); ctx.lineTo(bx+276,by0); ctx.lineTo(bx+276-sk,by1); ctx.lineTo(bx+232-sk,by1); ctx.closePath(); ctx.fill();
-    // 우측: 위치/장소 (입력값)
-    ctx.fillStyle='#111'; ctx.font='bold 22px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(bld,W-22,HEADER_H/2);
-  } else {
-    ctx.fillStyle=th.head; ctx.fillRect(0,0,W,HEADER_H); ctx.fillStyle='#fff'; ctx.textBaseline='middle';
-    ctx.font='bold 38px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.fillText('피난안내도',26,HEADER_H/2);
-    ctx.font='bold 19px sans-serif'; ctx.fillText('EVACUATION DIAGRAM',270,HEADER_H/2+2);
-    ctx.textAlign='right'; ctx.font='bold 20px "Malgun Gothic",sans-serif'; ctx.fillText(`${bld||'____'} 빌딩    ${$('mFloor').value||'__'} 층`,W-26,HEADER_H/2);
-  }
+function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'', fl=$('mFloor').value||'';
+  const gray=th.head==='gray', fg=gray?'#111':'#fff', cy=HEADER_H/2;
+  if(!gray){ ctx.fillStyle=th.head; ctx.fillRect(0,0,W,HEADER_H); }
+  let x=22;
+  // 층 배지 (예: 1F)
+  if(fl){ ctx.font='900 26px "Malgun Gothic",sans-serif'; const fw=Math.max(52, ctx.measureText(fl).width+24), bh=HEADER_H-24;
+    ctx.fillStyle=gray?'#111':'#fff'; ctx.fillRect(x,12,fw,bh);
+    ctx.fillStyle=gray?'#fff':th.head; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(fl,x+fw/2,cy+1); x+=fw+16; }
+  // 제목 + 영문 부제
+  ctx.font='900 32px "Malgun Gothic",sans-serif'; const tw=ctx.measureText('피난안내도').width;
+  ctx.fillStyle=fg; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('피난안내도',x,cy+4);
+  ctx.fillStyle=gray?'#9aa1ab':'rgba(255,255,255,.75)'; ctx.font='bold 9.5px sans-serif'; ctx.fillText('EMERGENCY EVACUATION MAP',x+2,cy+20);
+  x+=tw+18;
+  // 위치/장소 — 제목 바로 옆 [ 장소 ]
+  if(bld){ ctx.fillStyle=fg; ctx.font='bold 28px "Malgun Gothic",sans-serif'; ctx.textBaseline='middle'; const t=`[ ${bld} ]`; ctx.fillText(t,x,cy); x+=ctx.measureText(t).width+24; }
+  // 심플 테마: 2톤 각진 장식 배너
+  if(gray){ const by0=20, by1=HEADER_H-20, sk=14;
+    ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.moveTo(x+sk,by0); ctx.lineTo(x+150,by0); ctx.lineTo(x+150-sk,by1); ctx.lineTo(x,by1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#c7ccd3'; ctx.beginPath(); ctx.moveTo(x+158,by0); ctx.lineTo(x+192,by0); ctx.lineTo(x+192-sk,by1); ctx.lineTo(x+158-sk,by1); ctx.closePath(); ctx.fill(); }
 }
 function drawLeftPanel(){ ctx.fillStyle='#fff'; ctx.fillRect(0,HEADER_H,LEFTW,H);
   if(theme!=='simple'){ ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(LEFTW,HEADER_H+4); ctx.lineTo(LEFTW,H-6); ctx.stroke(); }
-  const x=16,w=LEFTW-30; let y=HEADER_H+16; y=drawStepList(ctx,'화재 시 피난요령','HOW TO EVACUATE IN CASE OF FIRE',FIRE_STEPS,x,y,w); y+=16;
+  const x=16,w=LEFTW-30; let y=HEADER_H+16; y=drawStepList(ctx,'화재 시 피난요령','HOW TO EVACUATE IN CASE OF FIRE',FIRE_STEPS,x,y,w); y+=28;
   drawStepList(ctx,'소화기 사용요령','HOW TO USE A FIRE EXTINGUISHER',EXT_STEPS,x,y,w); }
 const LEG_ITEMS=[{kind:'route',label:'피난동선'},{type:'here'},{type:'exit'},{type:'descend'},{type:'fire_ext'},{type:'alarm'}];
 function legLabel(it){ return it.kind==='route'?it.label:SYMBOLS[it.type].label; }
@@ -585,7 +588,7 @@ function draw(){
   if(viewMode==='poster'){ posterBg(); }
   else { ctx.fillStyle='#fbfcfe'; ctx.fillRect(0,0,W,H); drawWorldGrid(v); }
   drawPlanContent(v);
-  if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); drawFooter(); drawFloorLabel(); if(theme==='simple') drawFrame(); }
+  if(viewMode==='poster'){ drawHeader(); drawLeftPanel(); drawLegend(); drawFooter(); if(theme==='simple') drawFrame(); }
   else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('① 평면도 그리기 · 무한 캔버스 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',10,8); }
   if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
 }
