@@ -104,12 +104,13 @@
       <button class="abtn" id="undo">↶ 되돌리기</button>
       <button class="abtn warn" id="clearAll">초기화</button>
     </div>
-    <label class="cadlbl">선택한 도형 회전 (R키 = 90°)</label>
+    <label class="cadlbl">선택한 도형 회전 · 파란 ↻ 손잡이를 끌면 자유 회전 (Shift=15°, R키=90°)</label>
     <div class="row2">
       <button class="abtn" id="rotL">⟲ 15°</button>
       <button class="abtn" id="rotR">⟳ 15°</button>
       <button class="abtn" id="rot90">⟳ 90°</button>
     </div>
+    <div class="row2"><button class="abtn" id="flipSel">↔ 좌우반전 (F)</button></div>
 
     <h2>선 설정 (CAD)</h2>
     <label class="cadlbl">각도 스냅</label>
@@ -202,8 +203,8 @@ const SYMBOLS={
 };
 let DOOR_WALL=7, DOOR_BG='#fff';   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
 // 문 = 도면 기호. 가로 방향(폭 S)이 기본, 회전으로 세로 벽에 맞춤
-function drawDoor(g,type,x,y,S,rot,small){
-  g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180);
+function drawDoor(g,type,x,y,S,rot,small,flip){
+  g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180); if(flip) g.scale(-1,1);
   const t=Math.max(DOOR_WALL+4, S*0.1), lw=Math.max(1.4,S*0.03);
   const L=(a,b,c,d)=>{ g.beginPath(); g.moveTo(a,b); g.lineTo(c,d); g.stroke(); };
   const arrow=(x1,y1,x2,y2)=>{ L(x1,y1,x2,y2); const an=Math.atan2(y2-y1,x2-x1), h=Math.max(4,S*0.06);
@@ -228,8 +229,8 @@ function drawDoor(g,type,x,y,S,rot,small){
   }
   g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
-function drawSymbol(g,type,x,y,S,withLabel,rot){
-  const def=SYMBOLS[type]||{label:type,color:'#666'}; if(def.arch) return drawDoor(g,type,x,y,S,rot,!withLabel); const c=def.color; const u=S/48;
+function drawSymbol(g,type,x,y,S,withLabel,rot,flip){
+  const def=SYMBOLS[type]||{label:type,color:'#666'}; if(def.arch) return drawDoor(g,type,x,y,S,rot,!withLabel,flip); const c=def.color; const u=S/48;
   const facility=(type==='restroom'||type==='restroom_m'||type==='restroom_w'||type==='elevator');
   g.save(); if(rot){ g.translate(x,y); g.rotate(rot*Math.PI/180); g.translate(-x,-y); } roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
@@ -295,8 +296,13 @@ Object.keys(SYMBOLS).filter(t=>t!=='descend').forEach(type=>{
 let state={walls:[],routes:[],symbols:[],texts:[],stairs:[]};
 let bgImg=null, bgData=null;
 let mode='select', currentSymbol=null;
-let draft=null, sel=null, dragOff=null, previewPoint=null, selSym=null, selStair=null, stairGrab=null, selText=null, selLine=null, lineGrab=null;
+let draft=null, sel=null, dragOff=null, previewPoint=null, selSym=null, selStair=null, stairGrab=null, selText=null, selLine=null, lineGrab=null, rotGrab=null;
 let history=[]; let symResize=null;
+// 회전 손잡이: 선택한 심볼/글자 위쪽 원. 끌면 자유 회전 (Shift = 15° 단위)
+function rotHandle(v){ let o=null, h=0;
+  if(selSym!=null&&state.symbols[selSym]){ o=state.symbols[selSym]; const S=o.size||42; h=(o.type==='door_swing'?S*1.08:S*0.64)+28/v.s; }
+  else if(selText!=null&&state.texts[selText]){ o=state.texts[selText]; h=(o.size||16)*0.85+26/v.s; }
+  if(!o) return null; const a=(o.rot||0)*Math.PI/180; return {o, cx:o.x, cy:o.y, hx:o.x+Math.sin(a)*h, hy:o.y-Math.cos(a)*h}; }
 function clearSel(){ selSym=null; selText=null; selStair=null; selLine=null; stairGrab=null; lineGrab=null; }
 let viewMode='plan';   // 'plan' | 'poster'
 let stairA=null, shiftDown=false;
@@ -385,6 +391,7 @@ cv.addEventListener('mousedown',e=>{
   if(mode==='erase'){ eraseAt(p); return; }
   if(mode==='select'){
     const v=viewport();
+    { const rh=rotHandle(v); if(rh&&Math.hypot(p.x-rh.hx,p.y-rh.hy)<12/v.s){ snapshot(); rotGrab=rh.o; return; } }
     if(selSym!=null&&state.symbols[selSym]){ const s=state.symbols[selSym], sz=(s.size||42)*0.64, an=-(s.rot||0)*Math.PI/180;
       const dx=p.x-s.x, dy=p.y-s.y, lx=dx*Math.cos(an)-dy*Math.sin(an), ly=dx*Math.sin(an)+dy*Math.cos(an), ht=10/v.s;
       if(Math.abs(Math.abs(lx)-sz)<ht&&Math.abs(Math.abs(ly)-sz)<ht){ snapshot(); symResize={i:selSym}; return; } }
@@ -407,6 +414,7 @@ cv.addEventListener('mousemove',e=>{
   if(panning){ const m=pos(e); if(viewMode==='poster'){ posterPanX+=m.x-panLast.x; posterPanY+=m.y-panLast.y; } else { panX+=m.x-panLast.x; panY+=m.y-panLast.y; } panLast=m; draw(); return; }
   if(viewMode!=='plan') return;
   const p=toLogical(pos(e));
+  if(rotGrab){ let a=Math.atan2(p.x-rotGrab.x, -(p.y-rotGrab.y))*180/Math.PI; if(shiftDown||e.shiftKey) a=Math.round(a/15)*15; rotGrab.rot=Math.round(((a%360)+360)%360); statusMsg('회전 '+rotGrab.rot+'° (Shift=15° 단위)'); draw(); return; }
   if(stairGrab){ const s=state.stairs[stairGrab.i]; const g=stairGrab.corner;
     if(g){ if(g.ax)s.a.x=p.x; if(g.ay)s.a.y=p.y; if(g.bx)s.b.x=p.x; if(g.by)s.b.y=p.y; }
     else { const dx=p.x-stairGrab.last.x, dy=p.y-stairGrab.last.y; s.a.x+=dx; s.a.y+=dy; s.b.x+=dx; s.b.y+=dy; }
@@ -422,7 +430,7 @@ cv.addEventListener('mousemove',e=>{
   if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=p.x-dragOff.x; o.y=p.y-dragOff.y; draw(); return; }
   if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
 });
-window.addEventListener('mouseup',()=>{ panning=false; symResize=null; sel=null; stairGrab=null; lineGrab=null; });
+window.addEventListener('mouseup',()=>{ panning=false; rotGrab=null; symResize=null; sel=null; stairGrab=null; lineGrab=null; });
 // 휠 확대·축소 (커서 기준)
 cv.addEventListener('wheel',e=>{ e.preventDefault();
   const m=pos(e), before=toLogical(m);
@@ -462,6 +470,9 @@ function rotateSel(deg){
 $('rotL').addEventListener('click',()=>rotateSel(-15));
 $('rotR').addEventListener('click',()=>rotateSel(15));
 $('rot90').addEventListener('click',()=>rotateSel(90));
+function flipSel(){ if(selSym!=null&&state.symbols[selSym]&&SYMBOLS[state.symbols[selSym].type].arch){ snapshot(); const o=state.symbols[selSym]; o.flip=!o.flip; draw(); }
+  else statusMsg('좌우반전은 문을 선택했을 때 됩니다'); }
+$('flipSel').addEventListener('click',flipSel);
 $('symSize').addEventListener('input',()=>{ $('symSizeV').textContent=$('symSize').value; if(selSym!=null&&state.symbols[selSym]){ state.symbols[selSym].size=+$('symSize').value; draw(); } });
 $('textSize').addEventListener('input',()=>{ $('textSizeV').textContent=$('textSize').value; if(selText!=null&&state.texts[selText]){ state.texts[selText].size=+$('textSize').value; draw(); } });
 $('dimOn').addEventListener('change',draw);
@@ -481,6 +492,7 @@ window.addEventListener('keydown',e=>{
   else if(e.key==='Enter')finishLine();
   else if(e.key==='Shift')shiftDown=true;
   else if(e.key==='r'||e.key==='R'||e.key==='ㄱ') rotateSel(e.shiftKey?-90:90);
+  else if(e.key==='f'||e.key==='F'||e.key==='ㄹ') flipSel();
   else if(e.key==='0'){ if(viewMode==='poster'){ posterZoom=1; posterPanX=0; posterPanY=0; } else { zoom=1; panX=0; panY=0; } draw(); }
 });
 window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
@@ -521,7 +533,7 @@ function drawPlanContent(v){
   (state.stairs||[]).forEach(s=>drawStair(s.a,s.b));
   state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
   DOOR_BG=viewMode==='poster'?(TH[theme].plan||'#fff'):'#fbfcfe'; DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7);
-  state.symbols.forEach(s=>{ if(SYMBOLS[s.type]&&SYMBOLS[s.type].arch) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0); });   // 문은 벽 위·동선 아래
+  state.symbols.forEach(s=>{ if(SYMBOLS[s.type]&&SYMBOLS[s.type].arch) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0,s.flip); });   // 문은 벽 위·동선 아래
   state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ const fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
@@ -536,6 +548,8 @@ function drawPlanContent(v){
       ctx.save(); ctx.translate(s.x,s.y); if(s.rot) ctx.rotate(s.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-sz,-sz,sz*2,sz*2); ctx.setLineDash([]); const hh=5/v.s; ctx.fillStyle='#fff'; ctx.lineWidth=1.6/v.s; [[-sz,-sz],[sz,-sz],[sz,sz],[-sz,sz]].forEach(([hx,hy])=>{ ctx.fillRect(hx-hh,hy-hh,hh*2,hh*2); ctx.strokeRect(hx-hh,hy-hh,hh*2,hh*2); }); ctx.restore(); }
     if(selText!=null&&state.texts[selText]){ const t=state.texts[selText], fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; const tw=ctx.measureText(t.text).width;
       ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-tw/2-6,-fs*0.85,tw+12,fs*1.7); ctx.restore(); }
+    { const rh=rotHandle(v); if(rh){ ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=1.5/v.s; ctx.beginPath(); ctx.moveTo(rh.cx,rh.cy); ctx.lineTo(rh.hx,rh.hy); ctx.stroke();
+      ctx.fillStyle='#2563eb'; ctx.beginPath(); ctx.arc(rh.hx,rh.hy,7/v.s,0,7); ctx.fill(); ctx.fillStyle='#fff'; ctx.font='bold '+(10/v.s)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('↻',rh.hx,rh.hy+0.5/v.s); ctx.restore(); } }
     if(selStair!=null&&(state.stairs||[])[selStair]){ const s=state.stairs[selStair]; const x=Math.min(s.a.x,s.b.x),y=Math.min(s.a.y,s.b.y),w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
       ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]); ctx.fillStyle='#2563eb';
       [[s.a.x,s.a.y],[s.b.x,s.b.y],[s.b.x,s.a.y],[s.a.x,s.b.y]].forEach(c=>ctx.fillRect(c[0]-HS,c[1]-HS,HS*2,HS*2)); ctx.restore(); }
