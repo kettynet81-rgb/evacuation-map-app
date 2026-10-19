@@ -131,7 +131,7 @@
       <button class="abtn" id="routeAll">동선 전체에 적용</button>
     </div>
     <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택하면 그 심볼도 조절</label>
-    <input type="range" id="symSize" min="18" max="110" value="42">
+    <input type="range" id="symSize" min="18" max="300" value="42">
     <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="dimOn"> 치수(길이) 표시</label>
     <label class="cadlbl">치수 배율 · 1 px = <input type="text" id="mmPerPx" value="1" style="width:56px;display:inline-block;"> mm</label>
 
@@ -198,10 +198,40 @@ const SYMBOLS={
   fire_ext:{label:'소화기',color:C.red}, alarm:{label:'발신기',color:C.red}, here:{label:'현재위치',color:C.blue},
   restroom:{label:'화장실',color:'#fff'}, restroom_m:{label:'남자화장실',color:'#fff'}, restroom_w:{label:'여자화장실',color:'#fff'}, elevator:{label:'엘리베이터',color:'#fff'},
   firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'대피장소',color:C.exitGreen},
+  door_swing:{label:'여닫이문',color:'#111',arch:true}, door_slide:{label:'미닫이문',color:'#111',arch:true}, door_auto:{label:'자동문',color:'#111',arch:true},
 };
+let DOOR_WALL=7;   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
+// 문 = 도면 기호. 가로 방향(폭 S)이 기본, 회전으로 세로 벽에 맞춤
+function drawDoor(g,type,x,y,S,rot,small){
+  g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180);
+  const t=Math.max(DOOR_WALL+4, S*0.1), lw=Math.max(1.4,S*0.03);
+  const L=(a,b,c,d)=>{ g.beginPath(); g.moveTo(a,b); g.lineTo(c,d); g.stroke(); };
+  const arrow=(x1,y1,x2,y2)=>{ L(x1,y1,x2,y2); const an=Math.atan2(y2-y1,x2-x1), h=Math.max(4,S*0.06);
+    g.beginPath(); g.moveTo(x2,y2); g.lineTo(x2-h*Math.cos(an-0.5),y2-h*Math.sin(an-0.5)); g.lineTo(x2-h*Math.cos(an+0.5),y2-h*Math.sin(an+0.5)); g.closePath(); g.fill(); };
+  g.fillStyle='#fff'; g.fillRect(-S/2,-t/2,S,t);                 // 벽 끊기
+  g.strokeStyle='#111'; g.fillStyle='#111'; g.lineWidth=lw; g.lineCap='butt';
+  L(-S/2,-t/2,-S/2,t/2); L(S/2,-t/2,S/2,t/2);                     // 문틀
+  const cap=(txt)=>{ if(small) return; g.font='italic '+Math.max(9,S*0.12)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(txt,0,t/2+Math.max(3,S*0.05)); };
+  if(type==='door_swing'){
+    g.lineWidth=lw*1.6; L(-S/2,-t/2,-S/2,-t/2-S);                 // 문짝
+    g.lineWidth=lw*0.8; g.beginPath(); g.arc(-S/2,-t/2,S,-Math.PI/2,0); g.stroke();   // 열림 궤적
+  } else if(type==='door_slide'){
+    const pt=Math.max(3,t*0.3), pl=S*0.56; g.fillStyle='#d1d5db';
+    g.fillRect(-S/2,-pt,pl,pt); g.strokeRect(-S/2,-pt,pl,pt);
+    g.fillRect(S/2-pl,0,pl,pt); g.strokeRect(S/2-pl,0,pl,pt);
+    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.05,ay,-S*0.38,ay); arrow(S*0.05,ay,S*0.38,ay);
+    cap('Sliding door');
+  } else {
+    const pt=Math.max(3,t*0.3), gap=Math.max(1.5,S*0.015), pl=S/2-gap; g.fillStyle='#d1d5db';
+    g.fillRect(-S/2,-pt/2,pl,pt); g.strokeRect(-S/2,-pt/2,pl,pt);
+    g.fillRect(gap,-pt/2,pl,pt); g.strokeRect(gap,-pt/2,pl,pt);
+    g.fillStyle='#111'; g.lineWidth=lw*0.8; const ay=-t/2-Math.max(5,S*0.1); arrow(-S*0.04,ay,-S*0.4,ay); arrow(S*0.04,ay,S*0.4,ay);
+    cap('Auto door');
+  }
+  g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
 function drawSymbol(g,type,x,y,S,withLabel,rot){
-  const def=SYMBOLS[type]||{label:type,color:'#666'}; const c=def.color; const u=S/48;
+  const def=SYMBOLS[type]||{label:type,color:'#666'}; if(def.arch) return drawDoor(g,type,x,y,S,rot,!withLabel); const c=def.color; const u=S/48;
   const facility=(type==='restroom'||type==='restroom_m'||type==='restroom_w'||type==='elevator');
   g.save(); if(rot){ g.translate(x,y); g.rotate(rot*Math.PI/180); g.translate(-x,-y); } roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
@@ -254,7 +284,7 @@ function drawSymbol(g,type,x,y,S,withLabel,rot){
 const symGrid=$('symGrid');
 Object.keys(SYMBOLS).filter(t=>t!=='descend').forEach(type=>{
   const d=document.createElement('div'); d.className='sym'; d.dataset.type=type;
-  const sc=document.createElement('canvas'); sc.width=44;sc.height=44; drawSymbol(sc.getContext('2d'),type,22,22,30,false); d.appendChild(sc);
+  const sc=document.createElement('canvas'); sc.width=44;sc.height=44; if(SYMBOLS[type].arch) drawSymbol(sc.getContext('2d'),type,22,type==='door_swing'?36:24,32,false); else drawSymbol(sc.getContext('2d'),type,22,22,30,false); d.appendChild(sc);
   const sp=document.createElement('span'); sp.textContent=SYMBOLS[type].label; d.appendChild(sp);
   d.addEventListener('click',()=>{ setMode('symbol'); currentSymbol=type;
     document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); d.classList.add('active');
@@ -348,7 +378,7 @@ cv.addEventListener('mousedown',e=>{
     if(!stairA){ stairA={x:p.x,y:p.y}; previewPoint={x:p.x,y:p.y}; }
     else { snapshot(); (state.stairs=state.stairs||[]).push({a:stairA,b:{x:p.x,y:p.y}}); stairA=null; previewPoint=null; }
     draw(); return; }
-  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y,size:+$('symSize').value}); draw(); return; }
+  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y,size:SYMBOLS[currentSymbol].arch?Math.max(+$('symSize').value,100):+$('symSize').value}); draw(); return; }
   if(mode==='text'){ const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t,size:+$('textSize').value}); draw(); return; }
   if(mode==='wall'||mode==='route'){
     if(!draft){ draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; }
@@ -490,7 +520,7 @@ function drawPlanContent(v){
   state.texts.forEach(t=>{ const fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
     ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(-tw/2-4,-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,0,0); ctx.restore(); });
-  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0));
+  DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7); state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0));
   if(viewMode==='plan'){
     if($('dimOn').checked) state.walls.forEach(wl=>{ for(let j=0;j<wl.points.length-1;j++) drawDim(wl.points[j],wl.points[j+1],v.s); });
     if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; const ln=arr[selLine.i]; if(ln) for(let j=0;j<ln.points.length-1;j++) drawDim(ln.points[j],ln.points[j+1],v.s); }
