@@ -613,7 +613,7 @@ function drawFrame(){ const L=(a,b,c,d)=>{ ctx.beginPath(); ctx.moveTo(a,b); ctx
 }
 // ===== 프리미엄 테마 (전문 사인물 스타일) =====
 const FONT='"Malgun Gothic","맑은 고딕","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",sans-serif';
-const CAUTIONS=['젖은 수건으로 코와 입을 막는다.','문을 닫으며 대피한다.','대피 후 인원을 확인한다.'];
+const CAUTIONS=['젖은 수건으로 코와 입을 막는다.','연기 반대 방향으로 대피한다.','대피 후 인원을 확인한다.'];
 function rr(g,x,y,w,h,r){ g.beginPath(); g.roundRect(x,y,w,h,r); }
 function fitFont(g,txt,weight,size,maxW,min){ let s=size; g.font=`${weight} ${s}px ${FONT}`; while(s>min&&g.measureText(txt).width>maxW){ s-=1; g.font=`${weight} ${s}px ${FONT}`; } return s; }
 function wrapLines(g,text,maxW){ const out=[]; let line=''; for(const wd of String(text).split(' ')){ const t=line?line+' '+wd:wd; if(g.measureText(t).width>maxW&&line){ out.push(line); line=wd; } else line=t; } if(line)out.push(line); return out; }
