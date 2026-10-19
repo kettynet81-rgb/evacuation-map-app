@@ -103,6 +103,12 @@
       <button class="abtn" id="undo">↶ 되돌리기</button>
       <button class="abtn warn" id="clearAll">초기화</button>
     </div>
+    <label class="cadlbl">선택한 도형 회전 (R키 = 90°)</label>
+    <div class="row2">
+      <button class="abtn" id="rotL">⟲ 15°</button>
+      <button class="abtn" id="rotR">⟳ 15°</button>
+      <button class="abtn" id="rot90">⟳ 90°</button>
+    </div>
 
     <h2>선 설정 (CAD)</h2>
     <label class="cadlbl">각도 스냅</label>
@@ -115,10 +121,14 @@
     </select>
     <label class="cadlbl">각도 고정(°) · 빈칸=끔</label>
     <input type="text" id="angleLock" placeholder="예: 45  (0=오른쪽, 90=위)">
-    <label class="cadlbl">벽 굵기 <b id="wallWv">7</b> px</label>
-    <input type="range" id="wallW" min="2" max="16" value="7">
-    <label class="cadlbl">동선 굵기 <b id="routeWv">8</b> px</label>
-    <input type="range" id="routeW" min="3" max="18" value="8">
+    <label class="cadlbl">벽 굵기 <b id="wallWv">7</b> px · 선택하면 그 선도 조절</label>
+    <input type="range" id="wallW" min="2" max="80" value="7">
+    <label class="cadlbl">동선 굵기 <b id="routeWv">8</b> px · 선택하면 그 선도 조절</label>
+    <input type="range" id="routeW" min="3" max="60" value="8">
+    <div class="row2">
+      <button class="abtn" id="wallAll">벽 전체에 적용</button>
+      <button class="abtn" id="routeAll">동선 전체에 적용</button>
+    </div>
     <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택하면 그 심볼도 조절</label>
     <input type="range" id="symSize" min="18" max="110" value="42">
     <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="dimOn"> 치수(길이) 표시</label>
@@ -184,10 +194,10 @@ const SYMBOLS={
   firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'대피장소',color:C.exitGreen},
 };
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
-function drawSymbol(g,type,x,y,S,withLabel){
+function drawSymbol(g,type,x,y,S,withLabel,rot){
   const def=SYMBOLS[type]||{label:type,color:'#666'}; const c=def.color; const u=S/48;
   const facility=(type==='restroom'||type==='restroom_m'||type==='restroom_w'||type==='elevator');
-  g.save(); roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
+  g.save(); if(rot){ g.translate(x,y); g.rotate(rot*Math.PI/180); g.translate(-x,-y); } roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
   g.translate(x,y); const wht='#fff'; g.fillStyle=wht; g.strokeStyle=wht; g.lineCap='round'; g.lineJoin='round';
   if(type==='exit'){
@@ -267,7 +277,7 @@ function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=nul
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정.',wall:'클릭으로 점을 이어 그려요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정. R키=90° 회전, 선 굵기는 슬라이더.',wall:'클릭으로 점을 이어 그려요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
     route:'클릭으로 동선을 이어 찍어요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
     stair:'두 점을 클릭해 계단 영역을 지정하면 발판이 그려져요. (Esc=취소)',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
   statusMsg(tips[b.dataset.mode]||'');
@@ -351,8 +361,8 @@ cv.addEventListener('mousedown',e=>{
     // 선(피난동선/벽): 꼭짓점 우선, 아니면 선 전체 이동
     for(const kind of ['route','wall']){ const arr=kind==='route'?state.routes:state.walls;
       for(let i=arr.length-1;i>=0;i--){ const pts=arr[i].points; const vt=13/v.s;
-        for(let j=0;j<pts.length;j++){ if(dist(p,pts[j])<vt){ clearSel(); selLine={i,kind}; snapshot(); lineGrab={i,kind,type:'vertex',vi:j,last:{x:p.x,y:p.y}}; draw(); return; } }
-        for(let j=0;j<pts.length-1;j++){ if(segDist(p,pts[j],pts[j+1])<Math.max((arr[i].w||7)*0.7,10/v.s)){ clearSel(); selLine={i,kind}; snapshot(); lineGrab={i,kind,type:'move',last:{x:p.x,y:p.y}}; draw(); return; } } } }
+        for(let j=0;j<pts.length;j++){ if(dist(p,pts[j])<vt){ clearSel(); selLine={i,kind}; syncLW(kind,arr[i]); snapshot(); lineGrab={i,kind,type:'vertex',vi:j,last:{x:p.x,y:p.y}}; draw(); return; } }
+        for(let j=0;j<pts.length-1;j++){ if(segDist(p,pts[j],pts[j+1])<Math.max((arr[i].w||7)*0.7,10/v.s)){ clearSel(); selLine={i,kind}; syncLW(kind,arr[i]); snapshot(); lineGrab={i,kind,type:'move',last:{x:p.x,y:p.y}}; draw(); return; } } } }
     clearSel(); draw();
   }
 });
@@ -390,8 +400,28 @@ function onEsc(){ const was=!!draft||!!stairA; draft=null; previewPoint=null; st
 cv.addEventListener('contextmenu',e=>{ if(draft){ e.preventDefault(); finishLine(); } });
 cv.addEventListener('dblclick',()=>{ if(draft){ const pts=draft.points; if(pts.length>=2){ const a=pts[pts.length-1],b=pts[pts.length-2]; if(Math.hypot(a.x-b.x,a.y-b.y)<3)pts.pop(); } finishLine(); return; }
   if(mode==='select'&&selText!=null&&state.texts[selText]){ const nv=prompt('글자 수정', state.texts[selText].text); if(nv!==null){ snapshot(); state.texts[selText].text=nv.trim()||state.texts[selText].text; draw(); } } });
-$('wallW').addEventListener('input',()=>{ $('wallWv').textContent=$('wallW').value; });
-$('routeW').addEventListener('input',()=>{ $('routeWv').textContent=$('routeW').value; });
+function syncLW(kind,ln){ const id=kind==='wall'?'wallW':'routeW', w=ln.w||(kind==='wall'?7:8); $(id).value=w; $(id+'v').textContent=w; }
+['wall','route'].forEach(kind=>{ const id=kind+'W';
+  $(id).addEventListener('pointerdown',()=>{ if(selLine&&selLine.kind===kind) snapshot(); });
+  $(id).addEventListener('input',()=>{ $(id+'v').textContent=$(id).value;
+    if(selLine&&selLine.kind===kind){ const arr=kind==='wall'?state.walls:state.routes; if(arr[selLine.i]){ arr[selLine.i].w=+$(id).value; draw(); } } });
+  $(kind+'All').addEventListener('click',()=>{ const arr=kind==='wall'?state.walls:state.routes; if(!arr.length) return statusMsg(kind==='wall'?'벽이 없습니다':'동선이 없습니다');
+    snapshot(); const w=+$(id).value; arr.forEach(l=>l.w=w); draw(); statusMsg((kind==='wall'?'벽':'동선')+' 전체 '+arr.length+'개 → '+w+'px'); });
+});
+function rotateSel(deg){
+  if(selSym!=null&&state.symbols[selSym]){ snapshot(); const o=state.symbols[selSym]; o.rot=(((o.rot||0)+deg)%360+360)%360; }
+  else if(selText!=null&&state.texts[selText]){ snapshot(); const o=state.texts[selText]; o.rot=(((o.rot||0)+deg)%360+360)%360; }
+  else if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes, ln=arr[selLine.i]; if(!ln) return;
+    snapshot(); const n=ln.points.length, cx=ln.points.reduce((a,p)=>a+p.x,0)/n, cy=ln.points.reduce((a,p)=>a+p.y,0)/n, r=deg*Math.PI/180, c=Math.cos(r), sn=Math.sin(r);
+    ln.points.forEach(p=>{ const dx=p.x-cx, dy=p.y-cy; p.x=cx+dx*c-dy*sn; p.y=cy+dx*sn+dy*c; }); }
+  else if(selStair!=null&&(state.stairs||[])[selStair]){ if(deg%90) return statusMsg('계단은 90° 단위로만 회전됩니다');
+    snapshot(); const st=state.stairs[selStair], cx=(st.a.x+st.b.x)/2, cy=(st.a.y+st.b.y)/2, w=Math.abs(st.b.x-st.a.x), h=Math.abs(st.b.y-st.a.y);
+    st.a={x:cx-h/2,y:cy-w/2}; st.b={x:cx+h/2,y:cy+w/2}; }
+  else return statusMsg('회전할 도형을 먼저 선택하세요 (선택·이동 모드에서 클릭)');
+  draw(); }
+$('rotL').addEventListener('click',()=>rotateSel(-15));
+$('rotR').addEventListener('click',()=>rotateSel(15));
+$('rot90').addEventListener('click',()=>rotateSel(90));
 $('symSize').addEventListener('input',()=>{ $('symSizeV').textContent=$('symSize').value; if(selSym!=null&&state.symbols[selSym]){ state.symbols[selSym].size=+$('symSize').value; draw(); } });
 $('textSize').addEventListener('input',()=>{ $('textSizeV').textContent=$('textSize').value; if(selText!=null&&state.texts[selText]){ state.texts[selText].size=+$('textSize').value; draw(); } });
 $('dimOn').addEventListener('change',draw);
@@ -410,6 +440,7 @@ window.addEventListener('keydown',e=>{
   if(e.key==='Escape')onEsc();
   else if(e.key==='Enter')finishLine();
   else if(e.key==='Shift')shiftDown=true;
+  else if(e.key==='r'||e.key==='R'||e.key==='ㄱ') rotateSel(e.shiftKey?-90:90);
   else if(e.key==='0'){ if(viewMode==='poster'){ posterZoom=1; posterPanX=0; posterPanY=0; } else { zoom=1; panX=0; panY=0; } draw(); }
 });
 window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
@@ -451,17 +482,18 @@ function drawPlanContent(v){
   state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
   state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));
   state.texts.forEach(t=>{ const fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(t.x-tw/2-4,t.y-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,t.x,t.y); });
-  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true));
+    const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
+    ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(-tw/2-4,-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,0,0); ctx.restore(); });
+  state.symbols.forEach(s=>drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0));
   if(viewMode==='plan'){
     if($('dimOn').checked) state.walls.forEach(wl=>{ for(let j=0;j<wl.points.length-1;j++) drawDim(wl.points[j],wl.points[j+1],v.s); });
     if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; const ln=arr[selLine.i]; if(ln) for(let j=0;j<ln.points.length-1;j++) drawDim(ln.points[j],ln.points[j+1],v.s); }
   }
   if(viewMode==='plan'){ const HS=6/v.s;
     if(selSym!=null&&state.symbols[selSym]){ const s=state.symbols[selSym], sz=(s.size||42)*0.64;
-      ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(s.x-sz,s.y-sz,sz*2,sz*2); ctx.restore(); }
+      ctx.save(); ctx.translate(s.x,s.y); if(s.rot) ctx.rotate(s.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-sz,-sz,sz*2,sz*2); ctx.restore(); }
     if(selText!=null&&state.texts[selText]){ const t=state.texts[selText], fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; const tw=ctx.measureText(t.text).width;
-      ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(t.x-tw/2-6,t.y-fs*0.85,tw+12,fs*1.7); ctx.restore(); }
+      ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(-tw/2-6,-fs*0.85,tw+12,fs*1.7); ctx.restore(); }
     if(selStair!=null&&(state.stairs||[])[selStair]){ const s=state.stairs[selStair]; const x=Math.min(s.a.x,s.b.x),y=Math.min(s.a.y,s.b.y),w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
       ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2/v.s; ctx.setLineDash([6/v.s,4/v.s]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]); ctx.fillStyle='#2563eb';
       [[s.a.x,s.a.y],[s.b.x,s.b.y],[s.b.x,s.a.y],[s.a.x,s.b.y]].forEach(c=>ctx.fillRect(c[0]-HS,c[1]-HS,HS*2,HS*2)); ctx.restore(); }
