@@ -176,7 +176,7 @@ const W=cv.width, H=cv.height;
 const $=id=>document.getElementById(id);
 
 const C={ red:'#e2231a', yellow:'#ffe400', routeGreen:'#8DC63F', exitGreen:'#1a9e46', blue:'#1b3a9e', wall:'#111111' };
-const HEADER_H=74, LEFTW=252, S_LEGH=44, S_FOOT=36;
+const HEADER_H=88, LEFTW=252, S_LEGH=44, S_FOOT=36;
 let theme='simple';
 let REGX, REGY, REGW, REGH;
 function computeRegion(){ if(theme==='simple'){ REGX=LEFTW+16; REGY=HEADER_H+S_LEGH+12; REGW=(W-16)-REGX; REGH=(H-S_FOOT-12)-REGY; }
@@ -538,9 +538,9 @@ function greenCross(cx,cy,r){ ctx.fillStyle='#16a34a'; ctx.fillRect(cx-r,cy-r*0.
 function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'', fl=$('mFloor').value||'';
   const simple=th.head==='gray', band=simple?'#1f2d4a':th.head, cy=HEADER_H/2;
   // 글자 폭 먼저 계산 → 띠 길이 결정
-  ctx.font='900 26px "Malgun Gothic",sans-serif'; const fw=fl?Math.max(52, ctx.measureText(fl).width+24):0;
-  ctx.font='900 32px "Malgun Gothic",sans-serif'; const tw=ctx.measureText('피난안내도').width;
-  ctx.font='bold 28px "Malgun Gothic",sans-serif'; const pt=bld?`[ ${bld} ]`:'', pw=bld?ctx.measureText(pt).width:0;
+  ctx.font='900 32px "Malgun Gothic",sans-serif'; const fw=fl?Math.max(64, ctx.measureText(fl).width+26):0;
+  ctx.font='900 48px "Malgun Gothic",sans-serif'; const tw=ctx.measureText('피난안내도').width;
+  ctx.font='bold 38px "Malgun Gothic",sans-serif'; const pt=bld?`[ ${bld} ]`:'', pw=bld?ctx.measureText(pt).width:0;
   const textEnd=22+(fl?fw+16:0)+tw+18+pw;
   if(simple){
     // 남색 띠 (오른쪽 사선) + 오른쪽 흰 영역에 119 안내
@@ -548,21 +548,21 @@ function drawHeader(){ const th=TH[theme], bld=$('mBld').value||'', fl=$('mFloor
     ctx.fillStyle=band; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(cut,0); ctx.lineTo(cut-sk,HEADER_H); ctx.lineTo(0,HEADER_H); ctx.closePath(); ctx.fill();
     ctx.fillStyle='#e3342b'; ctx.beginPath(); ctx.moveTo(cut+10,0); ctx.lineTo(cut+22,0); ctx.lineTo(cut+22-sk,HEADER_H); ctx.lineTo(cut+10-sk,HEADER_H); ctx.closePath(); ctx.fill();
     const rx=W-24; let lw=0;
-    if(LOGO119.complete&&LOGO119.naturalWidth){ const lh=40; lw=LOGO119.naturalWidth*lh/LOGO119.naturalHeight; ctx.drawImage(LOGO119,rx-lw,cy-lh/2,lw,lh); }
+    if(LOGO119.complete&&LOGO119.naturalWidth){ const lh=50; lw=LOGO119.naturalWidth*lh/LOGO119.naturalHeight; ctx.drawImage(LOGO119,rx-lw,cy-lh/2,lw,lh); }
     else { ctx.fillStyle='#e3342b'; ctx.font='900 38px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText('119',rx,cy+2); lw=ctx.measureText('119').width; }
-    ctx.fillStyle='#e3342b'; ctx.font='900 20px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
-    ctx.fillText('화재신고는',rx-lw-12,cy-12); ctx.fillText('국번없이',rx-lw-12,cy+13);
+    ctx.fillStyle='#e3342b'; ctx.font='900 24px "Malgun Gothic",sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillText('화재신고는',rx-lw-14,cy-14); ctx.fillText('국번없이',rx-lw-14,cy+15);
   } else { ctx.fillStyle=band; ctx.fillRect(0,0,W,HEADER_H); }
   let x=22;
   // 층 배지 (예: 1F)
-  if(fl){ ctx.font='900 26px "Malgun Gothic",sans-serif'; ctx.fillStyle=simple?'#e3342b':'#fff'; ctx.fillRect(x,12,fw,HEADER_H-24);
+  if(fl){ ctx.font='900 32px "Malgun Gothic",sans-serif'; ctx.fillStyle=simple?'#e3342b':'#fff'; ctx.fillRect(x,14,fw,HEADER_H-28);
     ctx.fillStyle=simple?'#fff':th.head; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(fl,x+fw/2,cy+1); x+=fw+16; }
   // 제목 + 영문 부제
-  ctx.font='900 32px "Malgun Gothic",sans-serif'; ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('피난안내도',x,cy+4);
-  ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='bold 9.5px sans-serif'; ctx.fillText('EMERGENCY EVACUATION MAP',x+2,cy+20);
+  ctx.font='900 48px "Malgun Gothic",sans-serif'; ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('피난안내도',x,cy+10);
+  ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='bold 11px sans-serif'; ctx.fillText('EMERGENCY EVACUATION MAP',x+3,cy+31);
   x+=tw+18;
   // 위치/장소 — 제목 바로 옆 [ 장소 ]
-  if(bld){ ctx.fillStyle='#fff'; ctx.font='bold 28px "Malgun Gothic",sans-serif'; ctx.textBaseline='middle'; ctx.fillText(pt,x,cy); }
+  if(bld){ ctx.fillStyle='#fff'; ctx.font='bold 38px "Malgun Gothic",sans-serif'; ctx.textBaseline='middle'; ctx.fillText(pt,x,cy); }
 }
 function drawLeftPanel(){ ctx.fillStyle='#fff'; ctx.fillRect(0,HEADER_H,LEFTW,H);
   if(theme!=='simple'){ ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(LEFTW,HEADER_H+4); ctx.lineTo(LEFTW,H-6); ctx.stroke(); }
