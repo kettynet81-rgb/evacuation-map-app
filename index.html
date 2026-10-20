@@ -126,7 +126,8 @@
       <button class="abtn" id="rotR">⟳ 15°</button>
       <button class="abtn" id="rot90">⟳ 90°</button>
     </div>
-    <div class="row2"><button class="abtn" id="flipSel">↔ 좌우반전 (F)</button><button class="abtn" id="delSel">🗑 선택 삭제 (Del)</button></div>
+    <div class="row2"><button class="abtn" id="flipSel">↔ 좌우대칭 (F)</button><button class="abtn" id="flipSelV">↕ 상하대칭 (V)</button></div>
+    <div class="row2"><button class="abtn" id="delSel">🗑 선택 삭제 (Del)</button></div>
     <div class="row2"><button class="abtn" id="copyBtn">⧉ 복사 (Ctrl+C)</button><button class="abtn" id="pasteBtn">📋 붙여넣기 (Ctrl+V)</button></div>
     <div class="row2"><button class="abtn" id="toTop">⬆ 맨 위로</button><button class="abtn" id="toBottom">⬇ 동선 아래로</button></div>
 
@@ -224,8 +225,8 @@ const SYMBOLS={
 };
 let DOOR_WALL=7, DOOR_BG='#fff';   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
 // 문 = 도면 기호. 가로 방향(폭 S)이 기본, 회전으로 세로 벽에 맞춤
-function drawDoor(g,type,x,y,S,rot,small,flip){
-  g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180); if(flip) g.scale(-1,1);
+function drawDoor(g,type,x,y,S,rot,small,flip,flipV){
+  g.save(); g.translate(x,y); if(rot) g.rotate(rot*Math.PI/180); if(flip) g.scale(-1,1); if(flipV) g.scale(1,-1);
   const t=Math.max(DOOR_WALL+4, S*0.1), lw=Math.max(1.4,S*0.03);
   const L=(a,b,c,d)=>{ g.beginPath(); g.moveTo(a,b); g.lineTo(c,d); g.stroke(); };
   const arrow=(x1,y1,x2,y2)=>{ L(x1,y1,x2,y2); const an=Math.atan2(y2-y1,x2-x1), h=Math.max(4,S*0.06);
@@ -253,16 +254,16 @@ function drawDoor(g,type,x,y,S,rot,small,flip){
     g.fillStyle='#111'; g.strokeStyle='#111'; g.lineWidth=Math.max(1,lw*0.6); const ay=-tw/2-Math.max(5,S*0.08);
     if(type==='door_slide'){ arrow(-S*0.1,ay,-S*0.38,ay); arrow(S*0.1,ay,S*0.38,ay); }
     else { arrow(-S*0.04,ay,-S*0.38,ay); arrow(S*0.04,ay,S*0.38,ay); }
-    if(!small){ const d=tw/2+Math.max(4,S*0.05), r=(rot||0)*Math.PI/180, dx=-Math.sin(r)*d, dy=Math.cos(r)*d;
-      g.translate(0,d); if(flip) g.scale(-1,1); g.rotate(-r);   // 글자는 회전·반전과 상관없이 똑바로
+    if(!small){ const d=tw/2+Math.max(4,S*0.05), r=(rot||0)*Math.PI/180, sg=flipV?-1:1, dx=-Math.sin(r)*d*sg, dy=Math.cos(r)*d*sg;
+      g.translate(0,d); if(flipV) g.scale(1,-1); if(flip) g.scale(-1,1); g.rotate(-r);   // 글자는 회전·반전과 상관없이 똑바로
       g.font='bold '+Math.max(12,S*0.13)+'px "Malgun Gothic",sans-serif'; g.fillStyle='#222';
       if(Math.abs(dy)>=Math.abs(dx)){ g.textAlign='center'; g.textBaseline=dy>0?'top':'bottom'; } else { g.textAlign=dx>0?'left':'right'; g.textBaseline='middle'; }
       g.fillText(type==='door_slide'?'미닫이문':'자동문',0,0); }
   }
   g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
-function drawSymbol(g,type,x,y,S,withLabel,rot,flip){
-  const def=SYMBOLS[type]||{label:type,color:'#666'}; if(def.arch) return drawDoor(g,type,x,y,S,rot,!withLabel,flip); const c=def.color; const u=S/48;
+function drawSymbol(g,type,x,y,S,withLabel,rot,flip,flipV){
+  const def=SYMBOLS[type]||{label:type,color:'#666'}; if(def.arch) return drawDoor(g,type,x,y,S,rot,!withLabel,flip,flipV); const c=def.color; const u=S/48;
   const facility=(type==='restroom'||type==='restroom_m'||type==='restroom_w'||type==='elevator');
   g.save(); if(rot){ g.translate(x,y); g.rotate(rot*Math.PI/180); g.translate(-x,-y); } roundRectPath(g,x-S/2,y-S/2,S,S,S*0.16);
   if(facility){ g.fillStyle='#fff'; g.fill(); g.lineWidth=Math.max(1.4,S*0.045); g.strokeStyle='#2b2b2b'; g.stroke(); } else { g.fillStyle=c; g.fill(); }
@@ -526,9 +527,10 @@ function rotateSel(deg){
 $('rotL').addEventListener('click',()=>rotateSel(-15));
 $('rotR').addEventListener('click',()=>rotateSel(15));
 $('rot90').addEventListener('click',()=>rotateSel(90));
+function flipSelV(){ if(selSym!=null&&state.symbols[selSym]&&SYMBOLS[state.symbols[selSym].type].arch){ snapshot(); const o=state.symbols[selSym]; o.flipV=!o.flipV; draw(); statusMsg('상하대칭 (문이 벽 반대쪽으로 열림)'); } else statusMsg('대칭은 문을 선택했을 때 됩니다'); }
 function flipSel(){ if(selSym!=null&&state.symbols[selSym]&&SYMBOLS[state.symbols[selSym].type].arch){ snapshot(); const o=state.symbols[selSym]; o.flip=!o.flip; draw(); }
   else statusMsg('좌우반전은 문을 선택했을 때 됩니다'); }
-$('flipSel').addEventListener('click',flipSel);
+$('flipSel').addEventListener('click',flipSel); $('flipSelV').addEventListener('click',flipSelV);
 $('delSel').addEventListener('click',deleteSelected);
 $('copyBtn').addEventListener('click',copySel); $('pasteBtn').addEventListener('click',pasteClip);
 function setTop(v){ if(selSym!=null&&state.symbols[selSym]&&!SYMBOLS[state.symbols[selSym].type].arch){ snapshot(); const o=state.symbols[selSym]; if(v) o.top=true; else delete o.top; draw();
@@ -638,6 +640,7 @@ window.addEventListener('keydown',e=>{
   else if(e.key==='Shift')shiftDown=true;
   else if(e.key==='r'||e.key==='R'||e.key==='ㄱ') rotateSel(e.shiftKey?-90:90);
   else if(e.key==='f'||e.key==='F'||e.key==='ㄹ') flipSel();
+  else if((e.key==='v'||e.key==='V'||e.key==='ㅍ')&&!e.ctrlKey&&!e.metaKey) flipSelV();
   else if((e.key==='b'||e.key==='B'||e.key==='ㅠ')&&selLine&&selLine.kind==='route'){ const o=['one','both','none'], v=o[(o.indexOf($('routeArrow').value)+1)%3]; $('routeArrow').value=v; setRouteAr(v); }
   else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&viewMode==='plan'&&!draft){
     const vs=viewport().s, st=(e.ctrlKey||e.metaKey?0.5:e.shiftKey?20:3)/vs, dx=e.key==='ArrowLeft'?-st:e.key==='ArrowRight'?st:0, dy=e.key==='ArrowUp'?-st:e.key==='ArrowDown'?st:0;
@@ -702,7 +705,7 @@ function drawPlanContent(v){
   (state.stairs||[]).forEach(s=>drawStair(s.a,s.b));
   state.walls.forEach(wl=>drawPolyline(wl.points,C.wall,wl.w||7,false));
   DOOR_BG=viewMode==='poster'?(TH[theme].plan||'#fff'):'#fbfcfe'; DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7);
-  state.symbols.forEach(s=>{ if(SYMBOLS[s.type]&&SYMBOLS[s.type].arch) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0,s.flip); });   // 문은 벽 위·동선 아래
+  state.symbols.forEach(s=>{ if(SYMBOLS[s.type]&&SYMBOLS[s.type].arch) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0,s.flip,s.flipV); });   // 문은 벽 위·동선 아래
   state.texts.forEach(t=>{ const fs=t.size||16; ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
     ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(-tw/2-4,-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,0,0); ctx.restore(); });
