@@ -31,9 +31,9 @@
   .sym:hover{background:#eef3fb;} .sym.active{outline:2px solid #2563eb;background:#eaf1ff;}
   .sym canvas{width:34px;height:34px;}
 
-  #drawBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;display:none;gap:6px;align-items:center;background:#1f2d4a;color:#fff;padding:7px 8px 7px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;}
+  #drawBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;display:none;flex-wrap:wrap;justify-content:center;max-width:96%;gap:6px;align-items:center;background:#1f2d4a;color:#fff;padding:7px 8px 7px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;}
   #drawBar button{font:inherit;font-weight:700;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;background:#fff;color:#1f2d4a;}
-  #drawBar button.ok{background:#22a447;color:#fff;} #drawBar button.no{background:#e3342b;color:#fff;}
+  #drawBar input::placeholder{color:#9aa1ab;} #drawBar button.ok{background:#22a447;color:#fff;} #drawBar button.no{background:#e3342b;color:#fff;}
   .stagewrap{position:relative;flex:1;min-width:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:20px;background:#dfe4ec;}
   #board{touch-action:none;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:4px;cursor:crosshair;max-width:100%;height:auto;}
 
@@ -81,6 +81,9 @@
 
   <div class="stagewrap">
     <div id="drawBar"><span id="drawBarMsg">꺾을 곳마다 클릭 → 끝점 더블클릭</span>
+      <span style="opacity:.85;margin-left:6px;">길이</span><input id="dbLen" inputmode="decimal" autocomplete="off" placeholder="숫자" style="width:68px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;">
+      <span style="opacity:.85;">각도</span><input id="dbAng" inputmode="decimal" autocomplete="off" placeholder="마우스" style="width:58px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;"><span style="opacity:.85;">°</span>
+      <button id="dbPut">↵ 찍기</button>
       <button class="ok" id="dbOk">✓ 완료</button><button id="dbBack">↶ 점 취소</button><button class="no" id="dbCancel">✕ 취소</button></div>
     <canvas id="board" width="1400" height="920"></canvas>
   </div>
@@ -117,6 +120,7 @@
       <button class="abtn" id="rot90">⟳ 90°</button>
     </div>
     <div class="row2"><button class="abtn" id="flipSel">↔ 좌우반전 (F)</button><button class="abtn" id="delSel">🗑 선택 삭제 (Del)</button></div>
+    <div class="row2"><button class="abtn" id="copyBtn">⧉ 복사 (Ctrl+C)</button><button class="abtn" id="pasteBtn">📋 붙여넣기 (Ctrl+V)</button></div>
     <div class="row2"><button class="abtn" id="toTop">⬆ 맨 위로</button><button class="abtn" id="toBottom">⬇ 동선 아래로</button></div>
 
     <h2>선 설정 (CAD)</h2>
@@ -464,6 +468,9 @@ cv.addEventListener('wheel',e=>{ e.preventDefault();
 document.getElementById('dbOk').addEventListener('click',()=>{ if(draft&&draft.points.length>=2) finishLine(); });
 document.getElementById('dbBack').addEventListener('click',()=>{ if(!draft) return; draft.points.pop(); if(!draft.points.length){ draft=null; previewPoint=null; } else previewPoint=draft.points[draft.points.length-1]; draw(); });
 document.getElementById('dbCancel').addEventListener('click',()=>cancelLine());
+['dbLen','dbAng'].forEach(id=>{ const el=$(id); el.addEventListener('input',draw);
+  el.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); putTyped(); } else if(e.key==='Escape'){ el.value=''; el.blur(); draw(); } else if(e.key==='Tab'){ e.preventDefault(); $(id==='dbLen'?'dbAng':'dbLen').focus(); } }); });
+$('dbPut').addEventListener('click',putTyped);
 function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
     (draft.type==='wall'?state.walls:state.routes).push({points:dedupePts(draft.points.slice()), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value), ...(draft.type==='route'&&$('routeArrow').value!=='one'?{ar:$('routeArrow').value}:{})}); }
   draft=null; previewPoint=null; draw(); }
@@ -502,6 +509,7 @@ function flipSel(){ if(selSym!=null&&state.symbols[selSym]&&SYMBOLS[state.symbol
   else statusMsg('좌우반전은 문을 선택했을 때 됩니다'); }
 $('flipSel').addEventListener('click',flipSel);
 $('delSel').addEventListener('click',deleteSelected);
+$('copyBtn').addEventListener('click',copySel); $('pasteBtn').addEventListener('click',pasteClip);
 function setTop(v){ if(selSym!=null&&state.symbols[selSym]&&!SYMBOLS[state.symbols[selSym].type].arch){ snapshot(); const o=state.symbols[selSym]; if(v) o.top=true; else delete o.top; draw();
     statusMsg(v?'맨 위로 올렸습니다 (피난동선보다 위)':'피난동선 아래로 내렸습니다'); }
   else statusMsg('심볼(소화기·비상구 등)을 먼저 선택하세요'); }
@@ -523,6 +531,21 @@ function removeSegment(kind,i,j){ const arr=kind==='wall'?state.walls:state.rout
   if(closed){ const ring=pts.slice(0,-1), m=ring.length, out=[]; for(let k=0;k<m;k++){ const q=ring[(j+1+k)%m]; out.push({x:q.x,y:q.y}); } ln.points=out; return; }
   const parts=[pts.slice(0,j+1),pts.slice(j+1)].filter(a=>a.length>=2).map(a=>({...ln,points:a.map(q=>({x:q.x,y:q.y}))}));
   arr.splice(i,1,...parts); }
+let clip=null, pasteN=0;
+function copySel(){ let o=null;
+  if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; if(arr[selLine.i]) o={kind:selLine.kind,data:arr[selLine.i]}; }
+  else if(selSym!=null&&state.symbols[selSym]) o={kind:'sym',data:state.symbols[selSym]};
+  else if(selText!=null&&state.texts[selText]) o={kind:'txt',data:state.texts[selText]};
+  else if(selStair!=null&&(state.stairs||[])[selStair]) o={kind:'stair',data:state.stairs[selStair]};
+  if(!o) return statusMsg('복사할 것을 먼저 선택하세요'); clip=JSON.parse(JSON.stringify(o)); pasteN=0; statusMsg('복사했습니다 · Ctrl+V 또는 📋 붙여넣기'); }
+function pasteClip(){ if(!clip) return statusMsg('먼저 복사하세요 (선택 후 Ctrl+C)'); pasteN++; const d=40*pasteN, c=JSON.parse(JSON.stringify(clip.data)); snapshot(); clearSel();
+  const mv=p=>{ p.x+=d; p.y+=d; };
+  if(clip.kind==='wall'||clip.kind==='route'){ c.points.forEach(mv); const arr=clip.kind==='wall'?state.walls:state.routes; arr.push(c); selLine={i:arr.length-1,kind:clip.kind,seg:0}; }
+  else if(clip.kind==='sym'){ mv(c); state.symbols.push(c); selSym=state.symbols.length-1; }
+  else if(clip.kind==='txt'){ mv(c); state.texts.push(c); selText=state.texts.length-1; }
+  else if(clip.kind==='stair'){ mv(c.a); mv(c.b); (state.stairs=state.stairs||[]).push(c); selStair=state.stairs.length-1; }
+  if(mode!=='select') setModeKeepSel(); draw(); statusMsg('붙여넣었습니다 · 끌어서 옮기세요'); }
+function setModeKeepSel(){ const k={selLine,selSym,selText,selStair}; setMode('select'); ({selLine,selSym,selText,selStair}=k); }
 function deleteSelected(){
   if(selLine&&selLine.seg!=null){ snapshot(); removeSegment(selLine.kind,selLine.i,selLine.seg); }
   else if(selLine){ return statusMsg('지울 구간을 클릭해서 선택하세요'); }
@@ -541,6 +564,10 @@ function eraseAt(p){ const v=viewport(); const near=14/v.s;
 }
 window.addEventListener('keydown',e=>{
   const t=document.activeElement; if(t&&['INPUT','SELECT','TEXTAREA'].includes(t.tagName)) return;
+  if(draft&&/^[0-9.]$/.test(e.key)&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); $('dbLen').value=e.key; $('dbLen').focus(); draw(); return; }   // 그리는 중 숫자 → 길이 입력
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='c'||e.key==='C'||e.key==='ㅊ')){ e.preventDefault(); copySel(); return; }
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='v'||e.key==='V'||e.key==='ㅍ')){ e.preventDefault(); pasteClip(); return; }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='d'||e.key==='D'||e.key==='ㅇ')){ e.preventDefault(); copySel(); pasteClip(); return; }
   if(e.key==='Escape')onEsc();
   else if(e.key==='Enter')finishLine();
   else if(e.key==='Shift')shiftDown=true;
@@ -574,7 +601,17 @@ function drawPolyline(pts,color,w,arrow,both){
 }
 function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
   ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.42),y-s*Math.sin(an-0.42)); ctx.lineTo(x-s*Math.cos(an+0.42),y-s*Math.sin(an+0.42)); ctx.closePath(); ctx.fill(); }
-function fmtLen(len){ return Math.round(len)+''; }
+function mmScale(){ const v=parseFloat($('mmPerPx').value); return v>0?v:1; }
+function fmtLen(len){ return Math.round(len*mmScale())+''; }
+// CAD식 입력: 길이(mm, 치수 배율 기준)와 각도(°, 0=오른쪽 90=위). 각도 비우면 마우스 방향
+function typedPoint(){ if(!draft||!draft.points.length) return null; const L=parseFloat(($('dbLen').value||'').replace(/,/g,'')); if(!(L>0)) return null;
+  const last=draft.points[draft.points.length-1], len=L/mmScale(); const aRaw=($('dbAng').value||'').trim(); let an;
+  if(aRaw!==''&&!isNaN(parseFloat(aRaw))) an=-parseFloat(aRaw)*Math.PI/180;
+  else { const pp=previewPoint&&Math.hypot(previewPoint.x-last.x,previewPoint.y-last.y)>0.5?previewPoint:null;
+    if(pp) an=Math.atan2(pp.y-last.y,pp.x-last.x); else if(draft.points.length>=2){ const q=draft.points[draft.points.length-2]; an=Math.atan2(last.y-q.y,last.x-q.x); } else an=0; }
+  return {x:last.x+Math.cos(an)*len, y:last.y+Math.sin(an)*len}; }
+function putTyped(){ const t=typedPoint(); if(!t){ if(draft&&draft.points.length>=2&&!($('dbLen').value||'').trim()) finishLine(); return; }
+  draft.points.push(t); previewPoint=t; $('dbLen').value=''; $('dbAng').value=''; draw(); $('dbLen').focus(); }
 function drawDim(a,b,s){ const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy); if(len<10/s)return;
   const ang=Math.atan2(dy,dx), off=13/s, ox=-Math.sin(ang)*off, oy=Math.cos(ang)*off;
   ctx.save(); ctx.translate((a.x+b.x)/2+ox,(a.y+b.y)/2+oy); let ra=ang; if(ra>Math.PI/2)ra-=Math.PI; if(ra<-Math.PI/2)ra+=Math.PI; ctx.rotate(ra);
@@ -627,8 +664,8 @@ function drawPlanContent(v){
         ln.points.forEach(pt=>{ ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(pt.x,pt.y,HS,0,7); ctx.fill(); ctx.stroke(); }); ctx.restore(); } } }
   if(draft){ const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value; const col=draft.type==='route'?C.routeGreen:C.wall;
     if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route'&&$('routeArrow').value!=='none',draft.type==='route'&&$('routeArrow').value==='both');
-    if(previewPoint&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
-      ctx.setLineDash([7,6]); drawPolyline([last,previewPoint],col,pw,false); ctx.setLineDash([]); }
+    { const tp=typedPoint()||previewPoint; if(tp&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
+      ctx.setLineDash([7,6]); drawPolyline([last,tp],col,pw,false); ctx.setLineDash([]); } }
     ctx.fillStyle=col; draft.points.forEach(pt=>{ ctx.beginPath(); ctx.arc(pt.x,pt.y,pw*0.55+1.5,0,7); ctx.fill(); }); }
   if(mode==='stair'&&stairA&&previewPoint&&viewMode==='plan'){ ctx.setLineDash([6,5]); drawStair(stairA,previewPoint); ctx.setLineDash([]); }
   ctx.restore();
@@ -846,7 +883,7 @@ function drawWorldGrid(v){ const G=100, sp=G*v.s; if(sp<6) return; ctx.save(); c
 function drawReadout(a,b,v){
   const len=Math.hypot(b.x-a.x,b.y-a.y);
   let ang=Math.atan2(-(b.y-a.y),b.x-a.x)*180/Math.PI; if(ang<0)ang+=360;
-  const txt=`길이 ${Math.round(len)}  ·  ${ang.toFixed(1)}°`;
+  const txt=`길이 ${Math.round(len*mmScale())} mm  ·  ${ang.toFixed(1)}°`;
   const sx=v.ox+b.x*v.s, sy=v.oy+b.y*v.s;
   ctx.save(); ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
   const tw=ctx.measureText(txt).width, px=Math.min(W-tw-18, sx+16), py=Math.max(22, sy-18);
@@ -856,7 +893,7 @@ function drawReadout(a,b,v){
 
 function updateDrawBar(){ const b=document.getElementById('drawBar'); if(!b) return;
   if(draft&&viewMode==='plan'){ b.style.display='flex'; const n=draft.points.length;
-    document.getElementById('drawBarMsg').textContent=(draft.type==='route'?'피난동선':'벽')+' · 점 '+n+'개 · 꺾을 곳마다 클릭, 끝점 더블클릭 또는';
+    document.getElementById('drawBarMsg').textContent=(draft.type==='route'?'피난동선':'벽')+' · 점 '+n+'개 · 클릭하거나 길이 입력 후 Enter';
     document.getElementById('dbOk').disabled=n<2; document.getElementById('dbOk').style.opacity=n<2?.45:1; }
   else b.style.display='none'; }
 function draw(){ try{ updateDrawBar(); }catch(e){}
@@ -868,7 +905,7 @@ function draw(){ try{ updateDrawBar(); }catch(e){}
   drawPlanContent(v);
   if(viewMode==='poster'){ if(theme==='pro') drawProPoster(); else { drawHeader(); drawLeftPanel(); drawLegend(); drawFooter(); if(theme==='simple') drawFrame(); } }
   else { ctx.fillStyle='#9aa3b5'; ctx.font='bold 13px "Malgun Gothic",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('① 평면도 그리기 · 무한 캔버스 · 휠=확대/축소 · 가운데버튼=이동 · Shift=직각 · 0=원위치',10,8); }
-  if(draft&&previewPoint&&viewMode==='plan') drawReadout(draft.points[draft.points.length-1],previewPoint,v);
+  if(draft&&viewMode==='plan'){ const tp=typedPoint()||previewPoint; if(tp) drawReadout(draft.points[draft.points.length-1],tp,v); }
 }
 
 function setView(m){ viewMode=m; draft=null; sel=null; previewPoint=null;
