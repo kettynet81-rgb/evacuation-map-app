@@ -350,7 +350,7 @@ function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=nul
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정. R키=90° 회전, 방향키=조금씩 이동(Shift=10배).',wall:'클릭으로 점을 이어 그려요(기본 직각·최소단위 적용, 숫자 치면 길이 입력). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정. R키=90° 회전, 방향키=조금씩 이동(Ctrl=아주 미세, Shift=크게).',wall:'클릭으로 점을 이어 그려요(기본 직각·최소단위 적용, 숫자 치면 길이 입력). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
     route:'클릭으로 동선을 이어 찍어요(기본 직각·최소단위 적용, 숫자 치면 길이 입력). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
     stair:'두 점을 클릭해 계단 영역을 지정하면 발판이 그려져요. (Esc=취소)',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.',trim:'다른 선을 넘어간 부분을 클릭하면 교차점까지만 잘려요 (빨간 부분 미리보기). Esc=끝.'};
   statusMsg(tips[b.dataset.mode]||'');
@@ -640,8 +640,8 @@ window.addEventListener('keydown',e=>{
   else if(e.key==='f'||e.key==='F'||e.key==='ㄹ') flipSel();
   else if((e.key==='b'||e.key==='B'||e.key==='ㅠ')&&selLine&&selLine.kind==='route'){ const o=['one','both','none'], v=o[(o.indexOf($('routeArrow').value)+1)%3]; $('routeArrow').value=v; setRouteAr(v); }
   else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&viewMode==='plan'&&!draft){
-    const st=(gridPx()||1/mmScale())*(e.shiftKey?10:1), dx=e.key==='ArrowLeft'?-st:e.key==='ArrowRight'?st:0, dy=e.key==='ArrowUp'?-st:e.key==='ArrowDown'?st:0;
-    if(nudgeSel(dx,dy)) e.preventDefault(); else statusMsg('움직일 것을 먼저 선택하세요 (방향키=최소 단위, Shift+방향키=10배)'); }
+    const vs=viewport().s, st=(e.ctrlKey||e.metaKey?0.5:e.shiftKey?20:3)/vs, dx=e.key==='ArrowLeft'?-st:e.key==='ArrowRight'?st:0, dy=e.key==='ArrowUp'?-st:e.key==='ArrowDown'?st:0;
+    if(nudgeSel(dx,dy)) e.preventDefault(); else statusMsg('움직일 것을 먼저 선택하세요 (방향키=조금, Ctrl+방향키=아주 미세, Shift+방향키=크게)'); }
   else if(e.key==='PageUp'){ e.preventDefault(); setTop(true); }
   else if(e.key==='PageDown'){ e.preventDefault(); setTop(false); }
   else if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); deleteSelected(); }
