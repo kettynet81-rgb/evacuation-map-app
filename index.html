@@ -31,8 +31,11 @@
   .sym:hover{background:#eef3fb;} .sym.active{outline:2px solid #2563eb;background:#eaf1ff;}
   .sym canvas{width:34px;height:34px;}
 
-  .stagewrap{flex:1;min-width:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:20px;background:#dfe4ec;}
-  #board{background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:4px;cursor:crosshair;max-width:100%;height:auto;}
+  #drawBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;display:none;gap:6px;align-items:center;background:#1f2d4a;color:#fff;padding:7px 8px 7px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;}
+  #drawBar button{font:inherit;font-weight:700;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;background:#fff;color:#1f2d4a;}
+  #drawBar button.ok{background:#22a447;color:#fff;} #drawBar button.no{background:#e3342b;color:#fff;}
+  .stagewrap{position:relative;flex:1;min-width:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:20px;background:#dfe4ec;}
+  #board{touch-action:none;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:4px;cursor:crosshair;max-width:100%;height:auto;}
 
   .side{width:212px;flex:none;background:#fff;border-left:1px solid #dde2ea;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
   .side h2{font-size:11px;letter-spacing:.4px;color:#8a93a6;text-transform:uppercase;margin:6px 2px 2px;}
@@ -77,6 +80,8 @@
   </div>
 
   <div class="stagewrap">
+    <div id="drawBar"><span id="drawBarMsg">꺾을 곳마다 클릭 → 끝점 더블클릭</span>
+      <button class="ok" id="dbOk">✓ 완료</button><button id="dbBack">↶ 점 취소</button><button class="no" id="dbCancel">✕ 취소</button></div>
     <canvas id="board" width="1400" height="920"></canvas>
   </div>
 
@@ -452,6 +457,9 @@ cv.addEventListener('wheel',e=>{ e.preventDefault();
   const a=viewport(); panX+=m.x-(a.ox+before.x*a.s); panY+=m.y-(a.oy+before.y*a.s); draw();
 },{passive:false});
 // CAD식 선 마무리 / 취소
+document.getElementById('dbOk').addEventListener('click',()=>{ if(draft&&draft.points.length>=2) finishLine(); });
+document.getElementById('dbBack').addEventListener('click',()=>{ if(!draft) return; draft.points.pop(); if(!draft.points.length){ draft=null; previewPoint=null; } else previewPoint=draft.points[draft.points.length-1]; draw(); });
+document.getElementById('dbCancel').addEventListener('click',()=>cancelLine());
 function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
     (draft.type==='wall'?state.walls:state.routes).push({points:dedupePts(draft.points.slice()), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value)}); }
   draft=null; previewPoint=null; draw(); }
@@ -822,7 +830,12 @@ function drawReadout(a,b,v){
   ctx.fillStyle='#fff'; ctx.fillText(txt,px,py); ctx.restore();
 }
 
-function draw(){
+function updateDrawBar(){ const b=document.getElementById('drawBar'); if(!b) return;
+  if(draft&&viewMode==='plan'){ b.style.display='flex'; const n=draft.points.length;
+    document.getElementById('drawBarMsg').textContent=(draft.type==='route'?'피난동선':'벽')+' · 점 '+n+'개 · 꺾을 곳마다 클릭, 끝점 더블클릭 또는';
+    document.getElementById('dbOk').disabled=n<2; document.getElementById('dbOk').style.opacity=n<2?.45:1; }
+  else b.style.display='none'; }
+function draw(){ try{ updateDrawBar(); }catch(e){}
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
   computeRegion();
   const v=viewport();
