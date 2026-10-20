@@ -287,9 +287,10 @@ function drawSymbol(g,type,x,y,S,withLabel,rot,flip){
     arr(-14*u,-14*u,-6*u,-6*u);arr(14*u,-14*u,6*u,-6*u);arr(-14*u,14*u,-6*u,6*u);arr(14*u,14*u,6*u,6*u);
   }
   g.restore();
-  if(withLabel){ g.save(); const lbl=def.label; g.font='bold 13px "Malgun Gothic",sans-serif';
-    const tw=g.measureText(lbl).width, pad=5, ly=y+S/2+4; g.fillStyle='#fff'; g.strokeStyle=facility?'#2b2b2b':c; g.lineWidth=1.5;
-    roundRectPath(g,x-tw/2-pad,ly,tw+pad*2,18,4); g.fill(); g.stroke(); g.fillStyle=facility?'#2b2b2b':c; g.textAlign='center'; g.textBaseline='middle'; g.fillText(lbl,x,ly+9); g.restore(); }
+  if(withLabel){ g.save(); const lbl=def.label, fs=Math.max(6,S*0.31);   // 이름표는 심볼 크기에 비례 (42px일 때 13px)
+    g.font='bold '+fs+'px "Malgun Gothic",sans-serif';
+    const tw=g.measureText(lbl).width, pad=fs*0.38, lh=fs*1.38, ly=y+S/2+fs*0.3; g.fillStyle='#fff'; g.strokeStyle=facility?'#2b2b2b':c; g.lineWidth=Math.max(0.8,fs*0.115);
+    roundRectPath(g,x-tw/2-pad,ly,tw+pad*2,lh,fs*0.3); g.fill(); g.stroke(); g.fillStyle=facility?'#2b2b2b':c; g.textAlign='center'; g.textBaseline='middle'; g.fillText(lbl,x,ly+lh/2); g.restore(); }
 }
 const symGrid=$('symGrid');
 Object.keys(SYMBOLS).filter(t=>t!=='descend').forEach(type=>{
