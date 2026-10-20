@@ -33,6 +33,8 @@
 
   #drawBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;display:none;flex-wrap:wrap;justify-content:center;max-width:96%;gap:6px;align-items:center;background:#1f2d4a;color:#fff;padding:7px 8px 7px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;}
   #drawBar button{font:inherit;font-weight:700;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;background:#fff;color:#1f2d4a;}
+  #editBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;flex-wrap:wrap;justify-content:center;max-width:96%;gap:6px;align-items:center;background:#1f2d4a;color:#fff;padding:7px 8px 7px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;white-space:nowrap;}
+  #editBar button{font:inherit;font-weight:700;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;background:#22a447;color:#fff;}
   #drawBar input::placeholder{color:#9aa1ab;} #drawBar button.ok{background:#22a447;color:#fff;} #drawBar button.no{background:#e3342b;color:#fff;}
   .stagewrap{position:relative;flex:1;min-width:0;overflow:auto;display:flex;align-items:center;justify-content:center;padding:20px;background:#dfe4ec;}
   #board{touch-action:none;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.18);border-radius:4px;cursor:crosshair;max-width:100%;height:auto;}
@@ -80,6 +82,10 @@
   </div>
 
   <div class="stagewrap">
+    <div id="editBar" style="display:none"><span id="ebMsg">선택한 구간</span>
+      <span style="opacity:.85;margin-left:6px;">길이</span><input id="ebLen" inputmode="decimal" autocomplete="off" style="width:78px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;"><span style="opacity:.85;">mm</span>
+      <span style="opacity:.85;">각도</span><input id="ebAng" inputmode="decimal" autocomplete="off" style="width:62px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;"><span style="opacity:.85;">°</span>
+      <button class="ok" id="ebApply">✓ 적용</button></div>
     <div id="drawBar"><span id="drawBarMsg">꺾을 곳마다 클릭 → 끝점 더블클릭</span>
       <span style="opacity:.85;margin-left:6px;">길이</span><input id="dbLen" inputmode="decimal" autocomplete="off" placeholder="숫자" style="width:68px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;">
       <span style="opacity:.85;">각도</span><input id="dbAng" inputmode="decimal" autocomplete="off" placeholder="마우스" style="width:58px;font:inherit;padding:6px 7px;border-radius:7px;border:none;color:#111;"><span style="opacity:.85;">°</span>
@@ -471,6 +477,8 @@ document.getElementById('dbCancel').addEventListener('click',()=>cancelLine());
 ['dbLen','dbAng'].forEach(id=>{ const el=$(id); el.addEventListener('input',draw);
   el.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); putTyped(); } else if(e.key==='Escape'){ el.value=''; el.blur(); draw(); } else if(e.key==='Tab'){ e.preventDefault(); $(id==='dbLen'?'dbAng':'dbLen').focus(); } }); });
 $('dbPut').addEventListener('click',putTyped);
+['ebLen','ebAng'].forEach(id=>{ const el=$(id); el.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); applySegEdit(); } else if(e.key==='Escape'){ ebKey=''; el.blur(); draw(); } else if(e.key==='Tab'){ e.preventDefault(); $(id==='ebLen'?'ebAng':'ebLen').focus(); $(id==='ebLen'?'ebAng':'ebLen').select(); } }); });
+$('ebApply').addEventListener('click',applySegEdit);
 function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
     (draft.type==='wall'?state.walls:state.routes).push({points:dedupePts(draft.points.slice()), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value), ...(draft.type==='route'&&$('routeArrow').value!=='one'?{ar:$('routeArrow').value}:{})}); }
   draft=null; previewPoint=null; draw(); }
@@ -564,6 +572,7 @@ function eraseAt(p){ const v=viewport(); const near=14/v.s;
 }
 window.addEventListener('keydown',e=>{
   const t=document.activeElement; if(t&&['INPUT','SELECT','TEXTAREA'].includes(t.tagName)) return;
+  if(!draft&&selSegInfo()&&/^[0-9.]$/.test(e.key)&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); $('ebLen').value=e.key; $('ebLen').focus(); return; }
   if(draft&&/^[0-9.]$/.test(e.key)&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); $('dbLen').value=e.key; $('dbLen').focus(); draw(); return; }   // 그리는 중 숫자 → 길이 입력
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='c'||e.key==='C'||e.key==='ㅊ')){ e.preventDefault(); copySel(); return; }
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='v'||e.key==='V'||e.key==='ㅍ')){ e.preventDefault(); pasteClip(); return; }
@@ -891,7 +900,26 @@ function drawReadout(a,b,v){
   ctx.fillStyle='#fff'; ctx.fillText(txt,px,py); ctx.restore();
 }
 
-function updateDrawBar(){ const b=document.getElementById('drawBar'); if(!b) return;
+// 선택한 구간 길이·각도 수정 (캐드처럼). 열린 선은 뒤쪽 점들이 같이 밀려 모양 유지, 닫힌 선은 끝점만 이동
+let ebKey='';
+function selSegInfo(){ if(!selLine||selLine.seg==null||draft||viewMode!=='plan') return null; const arr=selLine.kind==='wall'?state.walls:state.routes, ln=arr[selLine.i]; if(!ln) return null;
+  const a=ln.points[selLine.seg], b=ln.points[selLine.seg+1]; if(!a||!b) return null; return {ln,a,b}; }
+function updateEditBar(){ const e=document.getElementById('editBar'); if(!e) return; const si=selSegInfo();
+  if(!si){ e.style.display='none'; ebKey=''; return; } e.style.display='flex';
+  const len=Math.hypot(si.b.x-si.a.x,si.b.y-si.a.y), ang=((Math.atan2(-(si.b.y-si.a.y),si.b.x-si.a.x)*180/Math.PI)+360)%360;
+  $('ebMsg').textContent=(selLine.kind==='wall'?'벽':'동선')+' 구간 선택됨 ·';
+  const key=selLine.kind+selLine.i+':'+selLine.seg+':'+Math.round(len*100)+':'+Math.round(ang*10);
+  if(key!==ebKey&&document.activeElement!==$('ebLen')&&document.activeElement!==$('ebAng')){ ebKey=key; $('ebLen').value=Math.round(len*mmScale()); $('ebAng').value=+ang.toFixed(1); } }
+function applySegEdit(){ const si=selSegInfo(); if(!si) return; const L=parseFloat(($('ebLen').value||'').replace(/,/g,'')), A=parseFloat($('ebAng').value);
+  if(!(L>0)) return statusMsg('길이를 숫자로 넣으세요'); const an=isNaN(A)?Math.atan2(si.b.y-si.a.y,si.b.x-si.a.x):-A*Math.PI/180, len=L/mmScale();
+  snapshot(); const pts=si.ln.points, j=selLine.seg+1, n=pts.length, nx=si.a.x+Math.cos(an)*len, ny=si.a.y+Math.sin(an)*len, dx=nx-pts[j].x, dy=ny-pts[j].y;
+  const closed=n>3&&Math.hypot(pts[0].x-pts[n-1].x,pts[0].y-pts[n-1].y)<0.5;
+  if(closed){ // 닫힌 도형: 끝점과 그 다음 점을 같이 밀어 다음 변이 평행 유지 (사각형은 사각형 그대로)
+    const m=n-1, ring=k=>((k%m)+m)%m, j0=ring(j), j1=ring(j+1), s0=ring(selLine.seg); const mv=[j0]; if(j1!==s0&&m>3) mv.push(j1);
+    mv.forEach(k=>{ pts[k].x+=dx; pts[k].y+=dy; }); pts[m].x=pts[0].x; pts[m].y=pts[0].y; }
+  else for(let k=j;k<n;k++){ pts[k].x+=dx; pts[k].y+=dy; }
+  ebKey=''; $('ebLen').blur(); $('ebAng').blur(); draw(); statusMsg('구간 길이 '+Math.round(L)+' mm · 각도 '+(isNaN(A)?'유지':A+'°')+' 적용'); }
+function updateDrawBar(){ try{ updateEditBar(); }catch(e){} const b=document.getElementById('drawBar'); if(!b) return;
   if(draft&&viewMode==='plan'){ b.style.display='flex'; const n=draft.points.length;
     document.getElementById('drawBarMsg').textContent=(draft.type==='route'?'피난동선':'벽')+' · 점 '+n+'개 · 클릭하거나 길이 입력 후 Enter';
     document.getElementById('dbOk').disabled=n<2; document.getElementById('dbOk').style.opacity=n<2?.45:1; }
