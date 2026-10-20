@@ -75,6 +75,7 @@
     <button class="tbtn" data-mode="route"><span class="ic">➡️</span>피난동선</button>
     <button class="tbtn" data-mode="stair"><span class="ic">🪜</span>계단</button>
     <button class="tbtn" data-mode="text"><span class="ic">🔤</span>방 이름</button>
+    <button class="tbtn" data-mode="trim"><span class="ic">✂️</span>자르기</button>
     <button class="tbtn" data-mode="erase"><span class="ic">🧽</span>지우개</button>
 
     <h2>표준 심볼</h2>
@@ -132,13 +133,14 @@
     <h2>선 설정 (CAD)</h2>
     <label class="cadlbl">각도 스냅</label>
     <select id="angleSnap">
+      <option value="ortho" selected>직각 (수평·수직) · 기본</option>
       <option value="free">자유 (대각선 O · Shift=직각)</option>
-      <option value="ortho">직각 (수평·수직)</option>
       <option value="15">15° 단위</option>
       <option value="30">30° 단위</option>
       <option value="45">45° 단위</option>
     </select>
     <label class="cadlbl">각도 고정(°) · 빈칸=끔</label>
+    <label class="cadlbl">최소 단위 (그리기·이동·길이) <input type="text" id="gridStep" value="10" inputmode="decimal" style="width:56px;display:inline-block;"> mm · 0=끔</label>
     <input type="text" id="angleLock" placeholder="예: 45  (0=오른쪽, 90=위)">
     <label class="cadlbl">벽 굵기 <b id="wallWv">7</b> px · 선택하면 그 선도 조절</label>
     <input type="range" id="wallW" min="2" max="80" value="7">
@@ -344,13 +346,13 @@ function snapshot(){ history.push(JSON.stringify(state)); if(history.length>40)h
 function setMode(m){ mode=m; draft=null; sel=null; previewPoint=null; stairA=null; clearSel();
   document.querySelectorAll('.tbtn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   if(m!=='symbol'){ document.querySelectorAll('.sym').forEach(x=>x.classList.remove('active')); currentSymbol=null; }
-  cv.style.cursor=(m==='select')?'move':(m==='erase')?'not-allowed':'crosshair'; draw();
+  cv.style.cursor=(m==='select')?'move':(m==='erase'||m==='trim')?'pointer':'crosshair'; draw();
 }
 document.querySelectorAll('.tbtn').forEach(b=>b.addEventListener('click',()=>{
   setMode(b.dataset.mode);
-  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정. R키=90° 회전, 선 굵기는 슬라이더.',wall:'클릭으로 점을 이어 그려요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
-    route:'클릭으로 동선을 이어 찍어요(대각선 O, Shift=직각). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
-    stair:'두 점을 클릭해 계단 영역을 지정하면 발판이 그려져요. (Esc=취소)',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.'};
+  const tips={select:'클릭해 선택 후 끌어 이동. 심볼·글자=크기 슬라이더, 계단·선=모서리/꼭짓점 드래그로 크기 조절. 글자 더블클릭=내용 수정. R키=90° 회전, 선 굵기는 슬라이더.',wall:'클릭으로 점을 이어 그려요(기본 직각·최소단위 적용, 숫자 치면 길이 입력). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+    route:'클릭으로 동선을 이어 찍어요(기본 직각·최소단위 적용, 숫자 치면 길이 입력). 오른쪽클릭/Enter/더블클릭=끝, Esc=취소.',
+    stair:'두 점을 클릭해 계단 영역을 지정하면 발판이 그려져요. (Esc=취소)',text:'오른쪽에 방 이름 입력 후 평면도 클릭.',erase:'지울 대상 클릭.',trim:'다른 선을 넘어간 부분을 클릭하면 교차점까지만 잘려요 (빨간 부분 미리보기). Esc=끝.'};
   statusMsg(tips[b.dataset.mode]||'');
 }));
 
@@ -383,25 +385,31 @@ function segDist(p,a,b){const l2=(a.x-b.x)**2+(a.y-b.y)**2; if(!l2)return dist(p
   let t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/l2; t=Math.max(0,Math.min(1,t));
   return dist(p,{x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)});}
 // 근처 기존 끝점에 붙이기(선 연결용)
-function snapEndpoint(p){ let best=null,bd=15;
-  const scan=arr=>arr.forEach(o=>{const pts=o.points; [pts[0],pts[pts.length-1]].forEach(pt=>{const d=dist(p,pt); if(d<bd){bd=d;best=pt;}});});
-  scan(state.walls); scan(state.routes);
-  return best?{x:best.x,y:best.y}:{x:p.x,y:p.y}; }
-// CAD식 각도 제약: 끝점 스냅 → 각도 고정 → 각도 스냅
-function constrainEnd(start,raw){
-  const snapped=snapEndpoint(raw);
-  if(snapped.x!==raw.x||snapped.y!==raw.y) return snapped;   // 기존 끝점에 딱 붙기 우선
+function gridPx(){ const g=parseFloat(($('gridStep')||{}).value); return g>0? g/mmScale() : 0; }
+function snapGrid(v){ const g=gridPx(); return g? Math.round(v/g)*g : v; }
+function snapPt(p){ return {x:snapGrid(p.x), y:snapGrid(p.y)}; }
+function snapR(){ try{ return 12/viewport().s; }catch(e){ return 15; } }
+// 붙을 후보: 다른 선의 끝점·꺾인점 (지금 끄는 점은 제외)
+function snapTargets(ex){ const out=[]; const add=arr=>arr.forEach(o=>o.points.forEach(pt=>{ if(!ex||!ex.includes(pt)) out.push(pt); })); add(state.walls); add(state.routes);
+  if(draft&&draft.points.length>1) draft.points.slice(0,-1).forEach(pt=>out.push(pt)); return out; }
+function snapEndpoint(p,ex){ let best=null,bd=snapR(); snapTargets(ex).forEach(pt=>{ const d=dist(p,pt); if(d<bd){bd=d;best=pt;} });
+  return best?{x:best.x,y:best.y}:snapPt(p); }
+// CAD식 제약: 각도(직각 등) 먼저 → 길이는 최소 단위로 → 근처 점은 '각도를 지키면서' 정렬
+function constrainEnd(start,raw,ex){
   const dx=raw.x-start.x, dy=raw.y-start.y, len=Math.hypot(dx,dy);
-  const doInc=(inc)=>{ const step=inc*Math.PI/180; const th=Math.round(Math.atan2(dy,dx)/step)*step; return {x:start.x+Math.cos(th)*len, y:start.y+Math.sin(th)*len}; };
-  if(shiftDown) return doInc(90);                      // Shift 누르면 그때만 직각
+  let dir=null;
   const lockRaw=($('angleLock').value||'').trim();
-  if(lockRaw!==''){ const V=parseFloat(lockRaw);
-    if(!isNaN(V)){ const a=V*Math.PI/180; const dir={x:Math.cos(a),y:-Math.sin(a)};
-      const proj=dx*dir.x+dy*dir.y; return {x:start.x+dir.x*proj, y:start.y+dir.y*proj}; } }
-  const sel=$('angleSnap').value; let inc=0;
-  if(sel==='ortho')inc=90; else if(sel==='15')inc=15; else if(sel==='30')inc=30; else if(sel==='45')inc=45;
-  if(inc>0) return doInc(inc);
-  return {x:raw.x,y:raw.y};                             // 자유 = 대각선 그대로
+  if(lockRaw!==''&&!isNaN(parseFloat(lockRaw))){ const a=parseFloat(lockRaw)*Math.PI/180; dir={x:Math.cos(a),y:-Math.sin(a)}; }
+  else { const sel=$('angleSnap').value; let inc=shiftDown?90:0;
+    if(!inc){ if(sel==='ortho')inc=90; else if(sel==='15')inc=15; else if(sel==='30')inc=30; else if(sel==='45')inc=45; }
+    if(inc>0){ const st=inc*Math.PI/180, th=Math.round(Math.atan2(dy,dx)/st)*st; dir={x:Math.cos(th),y:Math.sin(th)}; } }
+  if(!dir){ return snapEndpoint(raw,ex); }                        // 자유: 근처 점에 붙거나 최소 단위 격자
+  let t=dx*dir.x+dy*dir.y; if(dir.x*dx+dir.y*dy<0&&lockRaw==='') t=Math.abs(t);
+  // 근처 점이 있으면 그 점을 이 방향선 위로 투영해서 정렬 (각도는 유지)
+  let best=null,bd=snapR(); snapTargets(ex).forEach(pt=>{ const tp=(pt.x-start.x)*dir.x+(pt.y-start.y)*dir.y; const qx=start.x+dir.x*tp, qy=start.y+dir.y*tp;
+    const dRaw=Math.hypot(raw.x-qx,raw.y-qy); if(dRaw<bd*2.2&&Math.abs(tp-t)<bd*2.2){ const d=Math.abs(tp-t); if(d<bd*2.2&&(best===null||d<best.d)) best={t:tp,d}; } });
+  if(best) t=best.t; else { const g=gridPx(); if(g) t=Math.round(t/g)*g; }
+  return {x:start.x+dir.x*t, y:start.y+dir.y*t};
 }
 
 cv.addEventListener('mousedown',e=>{
@@ -420,6 +428,7 @@ cv.addEventListener('mousedown',e=>{
     else { const last=draft.points[draft.points.length-1]; const c=constrainEnd(last,p); draft.points.push(c); previewPoint=c; }
     draw(); return; }
   if(mode==='erase'){ eraseAt(p); return; }
+  if(mode==='trim'){ trimAt(p); return; }
   if(mode==='select'){
     const v=viewport();
     { const rh=rotHandle(v); if(rh&&Math.hypot(p.x-rh.hx,p.y-rh.hy)<12/v.s){ snapshot(); rotGrab=rh.o; return; } }
@@ -447,19 +456,23 @@ cv.addEventListener('mousemove',e=>{
   const p=toLogical(pos(e));
   if(rotGrab){ let a=Math.atan2(p.x-rotGrab.x, -(p.y-rotGrab.y))*180/Math.PI; if(shiftDown||e.shiftKey) a=Math.round(a/15)*15; rotGrab.rot=Math.round(((a%360)+360)%360); statusMsg('회전 '+rotGrab.rot+'° (Shift=15° 단위)'); draw(); return; }
   if(stairGrab){ const s=state.stairs[stairGrab.i]; const g=stairGrab.corner;
-    if(g){ if(g.ax)s.a.x=p.x; if(g.ay)s.a.y=p.y; if(g.bx)s.b.x=p.x; if(g.by)s.b.y=p.y; }
+    if(g){ const q=snapPt(p); if(g.ax)s.a.x=q.x; if(g.ay)s.a.y=q.y; if(g.bx)s.b.x=q.x; if(g.by)s.b.y=q.y; }
     else { const dx=p.x-stairGrab.last.x, dy=p.y-stairGrab.last.y; s.a.x+=dx; s.a.y+=dy; s.b.x+=dx; s.b.y+=dy; }
     stairGrab.last={x:p.x,y:p.y}; draw(); return; }
   if(lineGrab){ const arr=lineGrab.kind==='wall'?state.walls:state.routes; const ln=arr[lineGrab.i];
-    if(lineGrab.type==='vertex'){ const vi=lineGrab.vi; const anc=ln.points[vi>0?vi-1:vi+1]; ln.points[vi]= anc?constrainEnd(anc,p):{x:p.x,y:p.y}; }
-    else { const dx=p.x-lineGrab.last.x, dy=p.y-lineGrab.last.y; ln.points.forEach(pt=>{pt.x+=dx;pt.y+=dy;}); }
+    if(lineGrab.type==='vertex'){ const vi=lineGrab.vi, P=ln.points, n=P.length; const closed=n>3&&Math.hypot(P[0].x-P[n-1].x,P[0].y-P[n-1].y)<0.5;
+      const twin=closed&&(vi===0||vi===n-1)?(vi===0?n-1:0):-1; const ex=[P[vi]]; if(twin>=0) ex.push(P[twin]);
+      const anc=P[vi>0?vi-1:vi+1]; const np=anc?constrainEnd(anc,p,ex):snapEndpoint(p,ex); P[vi].x=np.x; P[vi].y=np.y; if(twin>=0){ P[twin].x=np.x; P[twin].y=np.y; } }
+    else { if(!lineGrab.orig){ lineGrab.orig=ln.points.map(q=>({x:q.x,y:q.y})); lineGrab.o0={x:lineGrab.last.x,y:lineGrab.last.y}; }
+      const dx=snapGrid(p.x-lineGrab.o0.x), dy=snapGrid(p.y-lineGrab.o0.y); ln.points.forEach((pt,k)=>{ pt.x=lineGrab.orig[k].x+dx; pt.y=lineGrab.orig[k].y+dy; }); }
     lineGrab.last={x:p.x,y:p.y}; draw(); return; }
   if(mode==='stair'&&stairA){ previewPoint={x:p.x,y:p.y}; draw(); return; }
   if(symResize){ const s=state.symbols[symResize.i]; if(s){ const an=-(s.rot||0)*Math.PI/180, dx=p.x-s.x, dy=p.y-s.y;
       const lx=dx*Math.cos(an)-dy*Math.sin(an), ly=dx*Math.sin(an)+dy*Math.cos(an);
       const ns=Math.round(Math.max(12,Math.min(800,Math.max(Math.abs(lx),Math.abs(ly))/0.64))); s.size=ns; $('symSize').value=Math.min(ns,+$('symSize').max); $('symSizeV').textContent=ns; draw(); } return; }
-  if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=p.x-dragOff.x; o.y=p.y-dragOff.y; draw(); return; }
+  if(sel){ const o=sel.kind==='sym'?state.symbols[sel.i]:state.texts[sel.i]; o.x=snapGrid(p.x-dragOff.x); o.y=snapGrid(p.y-dragOff.y); draw(); return; }
   if(draft){ const last=draft.points[draft.points.length-1]; previewPoint=constrainEnd(last,p); draw(); return; }
+  if(mode==='trim'){ const pl=trimPlan(p); trimHover=pl&&!pl.none?pl.cutPart:null; draw(); return; }
 });
 window.addEventListener('mouseup',()=>{ panning=false; rotGrab=null; symResize=null; sel=null; stairGrab=null; lineGrab=null; });
 // 휠 확대·축소 (커서 기준)
@@ -526,6 +539,8 @@ $('symSize').addEventListener('input',()=>{ $('symSizeV').textContent=$('symSize
 $('textSize').addEventListener('input',()=>{ $('textSizeV').textContent=$('textSize').value; if(selText!=null&&state.texts[selText]){ state.texts[selText].size=+$('textSize').value; draw(); } });
 $('dimOn').addEventListener('change',draw);
 $('mmPerPx').addEventListener('input',draw);
+['angleSnap','gridStep'].forEach(id=>{ try{ const v=localStorage.getItem('evac_'+id); if(v!==null) $(id).value=v; }catch(e){}
+  $(id).addEventListener('change',()=>{ try{ localStorage.setItem('evac_'+id,$(id).value); }catch(e){} }); });
 $('themeSel').addEventListener('change',()=>{ theme=$('themeSel').value; draw(); });
 function nearSeg(pts,p,j){ const c=[]; if(j>0)c.push(j-1); if(j<pts.length-1)c.push(j); if(!c.length) return 0;
   let best=c[0],bd=1e9; c.forEach(k=>{ const a=pts[k],b=pts[k+1]; if(Math.hypot(a.x-b.x,a.y-b.y)<0.5) return; const d=segDist(p,a,b); if(d<bd){bd=d;best=k;} }); return best; }
@@ -562,6 +577,38 @@ function deleteSelected(){
   else if(selStair!=null&&(state.stairs||[])[selStair]){ snapshot(); state.stairs.splice(selStair,1); }
   else return statusMsg('지울 것을 먼저 선택하세요');
   clearSel(); draw(); statusMsg('삭제했습니다 (되돌리기 가능)'); }
+// ===== 자르기 (캐드 TRIM): 클릭한 부분을 가장 가까운 교차점 사이로 잘라냄 =====
+function segX(a,b,c,d){ const r={x:b.x-a.x,y:b.y-a.y}, q={x:d.x-c.x,y:d.y-c.y}, den=r.x*q.y-r.y*q.x; if(Math.abs(den)<1e-9) return null;
+  const t=((c.x-a.x)*q.y-(c.y-a.y)*q.x)/den, u=((c.x-a.x)*r.y-(c.y-a.y)*r.x)/den, e=1e-6; return (t>=-e&&t<=1+e&&u>=-e&&u<=1+e)?t:null; }
+function polyCum(P){ const S=[0]; for(let k=1;k<P.length;k++) S.push(S[k-1]+Math.hypot(P[k].x-P[k-1].x,P[k].y-P[k-1].y)); return S; }
+function ptAt(P,S,s){ for(let k=1;k<P.length;k++) if(s<=S[k]+1e-9){ const L=S[k]-S[k-1]||1, t=(s-S[k-1])/L; return {x:P[k-1].x+(P[k].x-P[k-1].x)*t, y:P[k-1].y+(P[k].y-P[k-1].y)*t}; } return {x:P[P.length-1].x,y:P[P.length-1].y}; }
+function subPoly(P,S,a,b){ const out=[ptAt(P,S,a)]; for(let k=0;k<P.length;k++) if(S[k]>a+1e-6&&S[k]<b-1e-6) out.push({x:P[k].x,y:P[k].y}); out.push(ptAt(P,S,b)); return out; }
+function trimPlan(p){ const v=viewport(), near=Math.max(10/v.s,6);
+  let hit=null; for(const kind of ['route','wall']){ const arr=kind==='route'?state.routes:state.walls;
+    for(let i=arr.length-1;i>=0&&!hit;i--){ const P=arr[i].points; for(let j=0;j<P.length-1;j++){ const d=segDist(p,P[j],P[j+1]); if(d<Math.max((arr[i].w||7)*0.6,near)){ hit={kind,i,j}; break; } } } if(hit) break; }
+  if(!hit) return null; const arr=hit.kind==='route'?state.routes:state.walls, P=dedupePts(arr[hit.i].points), S=polyCum(P), T=S[S.length-1]; if(T<1e-6) return null;
+  const closed=P.length>3&&Math.hypot(P[0].x-P[P.length-1].x,P[0].y-P[P.length-1].y)<0.5;
+  // 클릭 위치의 거리값
+  let j=Math.min(hit.j,P.length-2), best=1e9; for(let k=0;k<P.length-1;k++){ const d=segDist(p,P[k],P[k+1]); if(d<best){best=d;j=k;} }
+  const a=P[j],b=P[j+1], L=S[j+1]-S[j]||1, tt=Math.max(0,Math.min(1,((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/(L*L))), sc=S[j]+tt*L;
+  // 교차점 (다른 모든 선 + 같은 선의 이웃 아닌 구간)
+  const cuts=[]; const others=[]; state.walls.forEach((o,k)=>others.push({P:o.points,self:hit.kind==='wall'&&k===hit.i})); state.routes.forEach((o,k)=>others.push({P:o.points,self:hit.kind==='route'&&k===hit.i}));
+  for(let k=0;k<P.length-1;k++) others.forEach(o=>{ for(let m=0;m<o.P.length-1;m++){ if(o.self){ const n=P.length-1; if(Math.abs(m-k)<=1||(closed&&((k===0&&m===n-1)||(m===0&&k===n-1)))) continue; }
+      const t=segX(P[k],P[k+1],o.P[m],o.P[m+1]); if(t!==null) cuts.push(S[k]+t*(S[k+1]-S[k])); } });
+  const eps=Math.max(0.5,T*1e-6); const C=[...new Set(cuts.map(c=>Math.round(c*1000)/1000))].filter(c=>closed||(c>eps&&c<T-eps)).sort((x,y)=>x-y);
+  let keep=[], cutPart=null;
+  if(!closed){ let lo=0,hi=T; C.forEach(c=>{ if(c<sc-1e-6) lo=Math.max(lo,c); if(c>sc+1e-6&&c<hi) hi=c; }); if(lo===0&&hi===T) return {hit,none:true};
+    cutPart=subPoly(P,S,lo,hi); if(lo>eps) keep.push(subPoly(P,S,0,lo)); if(hi<T-eps) keep.push(subPoly(P,S,hi,T)); }
+  else { if(C.length<2) return {hit,none:true}; let lo=null,hi=null; C.forEach(c=>{ if(c<sc-1e-6) lo=c; if(hi===null&&c>sc+1e-6) hi=c; }); if(lo===null) lo=C[C.length-1]; if(hi===null) hi=C[0];
+    if(lo<hi){ cutPart=subPoly(P,S,lo,hi); const part=subPoly(P,S,hi,T).concat(subPoly(P,S,0,lo).slice(1)); keep.push(part); }
+    else { cutPart=subPoly(P,S,lo,T).concat(subPoly(P,S,0,hi).slice(1)); keep.push(subPoly(P,S,hi,lo)); } }
+  keep=keep.map(dedupePts).filter(q=>q.length>=2&&polyCum(q).pop()>eps);
+  return {hit,cutPart,keep}; }
+let trimHover=null;
+function trimAt(p){ const pl=trimPlan(p); if(!pl) return statusMsg('자를 선을 클릭하세요');
+  if(pl.none) return statusMsg('다른 선과 만나는 곳이 없어 자를 수 없어요 (통째로 지우려면 지우개)');
+  snapshot(); const arr=pl.hit.kind==='route'?state.routes:state.walls, base=arr[pl.hit.i];
+  arr.splice(pl.hit.i,1,...pl.keep.map(q=>({...base,points:q}))); clearSel(); trimHover=null; draw(); statusMsg('잘라냈습니다 (되돌리기 가능)'); }
 function eraseAt(p){ const v=viewport(); const near=14/v.s;
   for(let i=state.symbols.length-1;i>=0;i--){ const sz=state.symbols[i].size||42; if(dist(p,state.symbols[i])<Math.max(sz*0.62,18/v.s)){snapshot();state.symbols.splice(i,1);selSym=null;return draw();} }
   for(let i=state.texts.length-1;i>=0;i--) if(dist(p,state.texts[i])<Math.max(34,30/v.s)){snapshot();state.texts.splice(i,1);return draw();}
@@ -671,6 +718,7 @@ function drawPlanContent(v){
     if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; const ln=arr[selLine.i];
       if(ln){ ctx.save(); ctx.fillStyle='#2563eb'; ctx.strokeStyle='#2563eb'; ctx.lineWidth=1.5/v.s;
         ln.points.forEach(pt=>{ ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(pt.x,pt.y,HS,0,7); ctx.fill(); ctx.stroke(); }); ctx.restore(); } } }
+  if(mode==='trim'&&trimHover&&viewMode==='plan'){ ctx.save(); ctx.strokeStyle='rgba(227,36,43,.85)'; ctx.lineWidth=Math.max(6,10/v.s); ctx.lineCap='round'; ctx.setLineDash([10/v.s,6/v.s]); ctx.beginPath(); ctx.moveTo(trimHover[0].x,trimHover[0].y); trimHover.slice(1).forEach(q=>ctx.lineTo(q.x,q.y)); ctx.stroke(); ctx.restore(); }
   if(draft){ const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value; const col=draft.type==='route'?C.routeGreen:C.wall;
     if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route'&&$('routeArrow').value!=='none',draft.type==='route'&&$('routeArrow').value==='both');
     { const tp=typedPoint()||previewPoint; if(tp&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
