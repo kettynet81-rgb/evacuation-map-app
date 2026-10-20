@@ -105,6 +105,7 @@
     <input type="range" id="textSize" min="10" max="64" value="16">
 
     <h2>편집</h2>
+    <button class="abtn pri" id="newMap">📄 새로 만들기</button>
     <div class="row2">
       <button class="abtn" id="undo">↶ 되돌리기</button>
       <button class="abtn warn" id="clearAll">초기화</button>
@@ -883,6 +884,15 @@ $('modePoster').addEventListener('click',()=>setView('poster'));
 $('bgFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return; const rd=new FileReader(); rd.onload=()=>{ bgData=rd.result; const im=new Image(); im.onload=()=>{bgImg=im;draw();}; im.src=rd.result; }; rd.readAsDataURL(f);});
 $('clearBg').addEventListener('click',()=>{bgImg=null;bgData=null;draw();});
 $('undo').addEventListener('click',()=>{ if(history.length){ state=JSON.parse(history.pop()); draft=null; clearSel(); draw(); }});
+// 새로 만들기: 도면·배경·장소·층·도면 이름까지 비움 (서버에서 불러온 도면을 덮어쓰지 않도록 이름도 비움)
+$('newMap').addEventListener('click',()=>{
+  const has=state.walls.length||state.routes.length||state.symbols.length||state.texts.length||(state.stairs||[]).length||bgImg;
+  if(has&&!confirm('새 도면을 만들까요?\n지금 도면은 지워집니다. (서버에 저장한 건 그대로 남아요)')) return;
+  snapshot(); state={walls:[],routes:[],symbols:[],texts:[],stairs:[]}; bgImg=null; bgData=null; draft=null; previewPoint=null; stairA=null; clearSel();
+  $('mBld').value=''; $('mFloor').value=''; $('mapName').value='';
+  const d=new Date(); $('mDate').value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  zoom=1; panX=0; panY=0; posterZoom=1; posterPanX=0; posterPanY=0;
+  if(viewMode!=='plan'&&$('modePlan')) $('modePlan').click(); setMode('select'); draw(); statusMsg('새 도면 · 장소와 층을 입력하고 그리기 시작하세요'); });
 $('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:[],symbols:[],texts:[],stairs:[]}; draft=null; clearSel(); draw(); });
 
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
