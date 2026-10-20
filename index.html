@@ -136,6 +136,7 @@
       <button class="abtn" id="wallAll">벽 전체에 적용</button>
       <button class="abtn" id="routeAll">동선 전체에 적용</button>
     </div>
+    <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:6px;"><input type="checkbox" id="routeBoth"> ↔ 양방향 화살표 · 선택하면 그 동선도 바뀜 (B키)</label>
     <label class="cadlbl">심볼 크기 <b id="symSizeV">42</b> px · 선택 후 슬라이더 또는 모서리 □ 드래그로 조절</label>
     <input type="range" id="symSize" min="18" max="300" value="42">
     <label class="cadlbl" style="display:flex;align-items:center;gap:6px;margin-top:8px;"><input type="checkbox" id="dimOn"> 치수(길이) 표시</label>
@@ -461,14 +462,16 @@ document.getElementById('dbOk').addEventListener('click',()=>{ if(draft&&draft.p
 document.getElementById('dbBack').addEventListener('click',()=>{ if(!draft) return; draft.points.pop(); if(!draft.points.length){ draft=null; previewPoint=null; } else previewPoint=draft.points[draft.points.length-1]; draw(); });
 document.getElementById('dbCancel').addEventListener('click',()=>cancelLine());
 function finishLine(){ if(draft&&draft.points.length>=2){ snapshot();
-    (draft.type==='wall'?state.walls:state.routes).push({points:dedupePts(draft.points.slice()), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value)}); }
+    (draft.type==='wall'?state.walls:state.routes).push({points:dedupePts(draft.points.slice()), w:+(draft.type==='wall'?$('wallW').value:$('routeW').value), ...(draft.type==='route'&&$('routeBoth').checked?{both:true}:{})}); }
   draft=null; previewPoint=null; draw(); }
 function cancelLine(){ draft=null; previewPoint=null; draw(); }
 function onEsc(){ const was=!!draft||!!stairA; draft=null; previewPoint=null; stairA=null; setMode('select'); statusMsg(was?'취소 · 선택 모드':'선택 모드'); }
 cv.addEventListener('contextmenu',e=>{ if(draft){ e.preventDefault(); finishLine(); } });
 cv.addEventListener('dblclick',()=>{ if(draft){ const pts=draft.points; if(pts.length>=2){ const a=pts[pts.length-1],b=pts[pts.length-2]; if(Math.hypot(a.x-b.x,a.y-b.y)<3)pts.pop(); } finishLine(); return; }
   if(mode==='select'&&selText!=null&&state.texts[selText]){ const nv=prompt('글자 수정', state.texts[selText].text); if(nv!==null){ snapshot(); state.texts[selText].text=nv.trim()||state.texts[selText].text; draw(); } } });
-function syncLW(kind,ln){ const id=kind==='wall'?'wallW':'routeW', w=ln.w||(kind==='wall'?7:8); $(id).value=w; $(id+'v').textContent=w; }
+function syncLW(kind,ln){ const id=kind==='wall'?'wallW':'routeW', w=ln.w||(kind==='wall'?7:8); $(id).value=w; $(id+'v').textContent=w; if(kind==='route') $('routeBoth').checked=!!ln.both; }
+function setRouteBoth(v){ if(selLine&&selLine.kind==='route'&&state.routes[selLine.i]){ snapshot(); const rt=state.routes[selLine.i]; if(v) rt.both=true; else delete rt.both; draw(); statusMsg(v?'양방향 화살표':'한쪽 화살표'); } }
+$('routeBoth').addEventListener('change',()=>setRouteBoth($('routeBoth').checked));
 ['wall','route'].forEach(kind=>{ const id=kind+'W';
   $(id).addEventListener('pointerdown',()=>{ if(selLine&&selLine.kind===kind) snapshot(); });
   $(id).addEventListener('input',()=>{ $(id+'v').textContent=$(id).value;
@@ -534,21 +537,25 @@ window.addEventListener('keydown',e=>{
   else if(e.key==='Shift')shiftDown=true;
   else if(e.key==='r'||e.key==='R'||e.key==='ㄱ') rotateSel(e.shiftKey?-90:90);
   else if(e.key==='f'||e.key==='F'||e.key==='ㄹ') flipSel();
+  else if((e.key==='b'||e.key==='B'||e.key==='ㅠ')&&selLine&&selLine.kind==='route'){ $('routeBoth').checked=!$('routeBoth').checked; setRouteBoth($('routeBoth').checked); }
   else if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); deleteSelected(); }
   else if(e.key==='0'){ if(viewMode==='poster'){ posterZoom=1; posterPanX=0; posterPanY=0; } else { zoom=1; panX=0; panY=0; } draw(); }
 });
 window.addEventListener('keyup',e=>{ if(e.key==='Shift')shiftDown=false; });
 
 // ===== 그리기 =====
-function drawPolyline(pts,color,w,arrow){
+function drawPolyline(pts,color,w,arrow,both){
   if(pts.length<2)return; ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round';
   let sp=pts;
   if(arrow){ const a=pts[pts.length-2],b=pts[pts.length-1]; const ang=Math.atan2(b.y-a.y,b.x-a.x);
     const hs=Math.max(w*4.8,14)*0.9, d=Math.hypot(b.x-a.x,b.y-a.y);
-    if(d>hs){ sp=pts.slice(0,-1).concat([{x:b.x-Math.cos(ang)*hs, y:b.y-Math.sin(ang)*hs}]); } }
+    if(d>hs){ sp=pts.slice(0,-1).concat([{x:b.x-Math.cos(ang)*hs, y:b.y-Math.sin(ang)*hs}]); }
+    if(both){ const a2=pts[1],b2=pts[0], an2=Math.atan2(b2.y-a2.y,b2.x-a2.x), d2=Math.hypot(b2.x-a2.x,b2.y-a2.y);
+      if(d2>hs){ sp=[{x:b2.x-Math.cos(an2)*hs, y:b2.y-Math.sin(an2)*hs}].concat(sp.slice(1)); } } }
   ctx.beginPath(); ctx.moveTo(sp[0].x,sp[0].y); for(let i=1;i<sp.length;i++)ctx.lineTo(sp[i].x,sp[i].y); ctx.stroke();
-  if(arrow){ for(let i=1;i<pts.length-1;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w,2.8); }
-    const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w,4.8); }
+  if(arrow){ if(!both) for(let i=1;i<pts.length-1;i++){ const a=pts[i-1],b=pts[i]; head((a.x+b.x)/2,(a.y+b.y)/2,Math.atan2(b.y-a.y,b.x-a.x),color,w,2.8); }
+    const a=pts[pts.length-2],b=pts[pts.length-1]; head(b.x,b.y,Math.atan2(b.y-a.y,b.x-a.x),color,w,4.8);
+    if(both){ const a2=pts[1],b2=pts[0]; head(b2.x,b2.y,Math.atan2(b2.y-a2.y,b2.x-a2.x),color,w,4.8); } }
 }
 function head(x,y,an,color,w,mult){ const s=Math.max(w*(mult||2.6),14); ctx.fillStyle=color; ctx.beginPath();
   ctx.moveTo(x,y); ctx.lineTo(x-s*Math.cos(an-0.42),y-s*Math.sin(an-0.42)); ctx.lineTo(x-s*Math.cos(an+0.42),y-s*Math.sin(an+0.42)); ctx.closePath(); ctx.fill(); }
@@ -580,7 +587,7 @@ function drawPlanContent(v){
     const tw=ctx.measureText(t.text).width; ctx.save(); ctx.translate(t.x,t.y); if(t.rot) ctx.rotate(t.rot*Math.PI/180);
     ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillRect(-tw/2-4,-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,0,0); ctx.restore(); });
   state.symbols.forEach(s=>{ if(!(SYMBOLS[s.type]&&SYMBOLS[s.type].arch)) drawSymbol(ctx,s.type,s.x,s.y,s.size||42,true,s.rot||0); });
-  state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true));   // 피난동선은 맨 위 (글자·심볼보다 위)
+  state.routes.forEach(rt=>drawPolyline(rt.points,C.routeGreen,rt.w||8,true,rt.both));   // 피난동선은 맨 위 (글자·심볼보다 위)
   if(viewMode==='plan'){
     if($('dimOn').checked) state.walls.forEach(wl=>{ for(let j=0;j<wl.points.length-1;j++) drawDim(wl.points[j],wl.points[j+1],v.s); });
     if(selLine){ const arr=selLine.kind==='wall'?state.walls:state.routes; const ln=arr[selLine.i]; if(ln) for(let j=0;j<ln.points.length-1;j++) drawDim(ln.points[j],ln.points[j+1],v.s); }
@@ -602,7 +609,7 @@ function drawPlanContent(v){
       if(ln){ ctx.save(); ctx.fillStyle='#2563eb'; ctx.strokeStyle='#2563eb'; ctx.lineWidth=1.5/v.s;
         ln.points.forEach(pt=>{ ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(pt.x,pt.y,HS,0,7); ctx.fill(); ctx.stroke(); }); ctx.restore(); } } }
   if(draft){ const pw=draft.type==='route'?+$('routeW').value:+$('wallW').value; const col=draft.type==='route'?C.routeGreen:C.wall;
-    if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route');
+    if(draft.points.length>=2) drawPolyline(draft.points,col,pw,draft.type==='route',draft.type==='route'&&$('routeBoth').checked);
     if(previewPoint&&viewMode==='plan'){ const last=draft.points[draft.points.length-1];
       ctx.setLineDash([7,6]); drawPolyline([last,previewPoint],col,pw,false); ctx.setLineDash([]); }
     ctx.fillStyle=col; draft.points.forEach(pt=>{ ctx.beginPath(); ctx.arc(pt.x,pt.y,pw*0.55+1.5,0,7); ctx.fill(); }); }
