@@ -865,7 +865,19 @@ $('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
 function renderPoster(mime,scale=2){ const prev=viewMode; viewMode='poster'; cv.width=W*scale; cv.height=H*scale; ctx.setTransform(scale,0,0,scale,0,0); draw(); const url=cv.toDataURL(mime||'image/png'); cv.width=W; cv.height=H; ctx.setTransform(1,0,0,1,0,0); viewMode=prev; draw(); return url; }
 $('exportPng').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}_${$('mFloor').value}.png`; a.href=renderPoster('image/png'); a.click(); });
-$('print').addEventListener('click',()=>{ const img=renderPoster('image/png'); const w=window.open(''); w.document.write(`<img src="${img}" style="width:100%"><script>onload=()=>{print()}<\/script>`); w.document.close(); });
+// 인쇄: 숨은 iframe + @page 여백 0 → 브라우저 머리글·바닥글(날짜·about:blank·1/1) 안 나옴
+$('print').addEventListener('click',()=>{ const img=renderPoster('image/png');
+  const old=document.getElementById('printFrame'); if(old) old.remove();
+  const f=document.createElement('iframe'); f.id='printFrame'; f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(f); const d=f.contentWindow.document;
+  d.open(); d.write(`<!doctype html><html><head><meta charset="utf-8"><title>피난안내도</title><style>
+    @page{size:A4 landscape;margin:0;}
+    html,body{margin:0;padding:0;height:100%;background:#fff;}
+    body{display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:7mm;}
+    img{max-width:100%;max-height:100%;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  </style></head><body><img id="pimg" src="${img}"></body></html>`); d.close();
+  const go=()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ console.error(e); } setTimeout(()=>f.remove(),60000); };
+  const im=d.getElementById('pimg'); if(im.complete) setTimeout(go,50); else im.onload=()=>setTimeout(go,50); });
 $('saveJson').addEventListener('click',()=>{ const data={state,bgData,meta:{b:$('mBld').value,f:$('mFloor').value,d:$('mDate').value}};
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'}); const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}.json`; a.href=URL.createObjectURL(blob); a.click(); });
 $('loadFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
