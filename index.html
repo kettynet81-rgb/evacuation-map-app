@@ -206,7 +206,7 @@ const SYMBOLS={
   exit:{label:'비상구',color:C.exitGreen},
   fire_ext:{label:'소화기',color:C.red}, alarm:{label:'발신기',color:C.red}, here:{label:'현재위치',color:C.blue},
   restroom:{label:'화장실',color:'#fff'}, restroom_m:{label:'남자화장실',color:'#fff'}, restroom_w:{label:'여자화장실',color:'#fff'}, elevator:{label:'엘리베이터',color:'#fff'},
-  firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'비상대피 집결장소',color:'#f07d00'},
+  firstaid:{label:'구급함',color:C.exitGreen}, descend:{label:'완강기',color:'#ea580c'}, assembly:{label:'비상대피 집결장소',color:C.exitGreen,labelColor:'#e3242b'},
   door_swing:{label:'여닫이문',color:'#111',arch:true}, door_slide:{label:'미닫이문',color:'#111',arch:true}, door_auto:{label:'자동문',color:'#111',arch:true},
 };
 let DOOR_WALL=7, DOOR_BG='#fff';   // 문이 끊어낼 벽 두께 (그릴 때 가장 두꺼운 벽 기준으로 갱신)
@@ -297,8 +297,8 @@ function drawSymbol(g,type,x,y,S,withLabel,rot,flip){
   g.restore();
   if(withLabel){ g.save(); const lbl=def.label, fs=Math.max(6,S*0.31);   // 이름표는 심볼 크기에 비례 (42px일 때 13px)
     g.font='bold '+fs+'px "Malgun Gothic",sans-serif';
-    const tw=g.measureText(lbl).width, pad=fs*0.38, lh=fs*1.38, ly=y+S/2+fs*0.3; g.fillStyle='#fff'; g.strokeStyle=facility?'#2b2b2b':c; g.lineWidth=Math.max(0.8,fs*0.115);
-    roundRectPath(g,x-tw/2-pad,ly,tw+pad*2,lh,fs*0.3); g.fill(); g.stroke(); g.fillStyle=facility?'#2b2b2b':c; g.textAlign='center'; g.textBaseline='middle'; g.fillText(lbl,x,ly+lh/2); g.restore(); }
+    const tw=g.measureText(lbl).width, pad=fs*0.38, lh=fs*1.38, ly=y+S/2+fs*0.3; const lc=def.labelColor||(facility?'#2b2b2b':c); g.fillStyle='#fff'; g.strokeStyle=lc; g.lineWidth=Math.max(0.8,fs*0.115);
+    roundRectPath(g,x-tw/2-pad,ly,tw+pad*2,lh,fs*0.3); g.fill(); g.stroke(); g.fillStyle=lc; g.textAlign='center'; g.textBaseline='middle'; g.fillText(lbl,x,ly+lh/2); g.restore(); }
 }
 const symGrid=$('symGrid');
 Object.keys(SYMBOLS).filter(t=>t!=='descend').forEach(type=>{
@@ -402,7 +402,7 @@ cv.addEventListener('mousedown',e=>{
     if(!stairA){ stairA={x:p.x,y:p.y}; previewPoint={x:p.x,y:p.y}; }
     else { snapshot(); (state.stairs=state.stairs||[]).push({a:stairA,b:{x:p.x,y:p.y}}); stairA=null; previewPoint=null; }
     draw(); return; }
-  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y,size:SYMBOLS[currentSymbol].arch?Math.max(+$('symSize').value,100):+$('symSize').value}); draw(); return; }
+  if(mode==='symbol'&&currentSymbol){ snapshot(); state.symbols.push({type:currentSymbol,x:p.x,y:p.y,size:SYMBOLS[currentSymbol].arch?Math.max(+$('symSize').value,100):currentSymbol==='assembly'?Math.round(+$('symSize').value*1.5):+$('symSize').value}); draw(); return; }
   if(mode==='text'){ const t=$('textInput').value.trim()||'방'; snapshot(); state.texts.push({x:p.x,y:p.y,text:t,size:+$('textSize').value}); draw(); return; }
   if(mode==='wall'||mode==='route'){
     if(!draft){ draft={type:mode,points:[snapEndpoint(p)]}; previewPoint=draft.points[0]; }
