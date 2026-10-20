@@ -723,7 +723,7 @@ function drawFrame(){ const L=(a,b,c,d)=>{ ctx.beginPath(); ctx.moveTo(a,b); ctx
 }
 // ===== 프리미엄 테마 (전문 사인물 스타일) =====
 const FONT='"Malgun Gothic","맑은 고딕","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR",sans-serif';
-const CAUTIONS=['엘리베이터는 타지 않는다.','문손잡이가 뜨거우면 다른 길로 간다.','출구가 막히면 문을 닫고 창가에서 구조를 요청한다.','대피 후 119에 신고하고 인원을 확인한다. 다시 들어가지 않는다.'];
+const CAUTIONS=['문손잡이가 뜨거우면 다른 길로 간다.','출구가 막히면 문을 닫고 창가에서 구조를 요청한다.','대피 후 119에 신고하고 인원을 확인한다.','대피한 뒤 다시 들어가지 않는다.'];   // 엘리베이터 없음
 function rr(g,x,y,w,h,r){ g.beginPath(); g.roundRect(x,y,w,h,r); }
 function fitFont(g,txt,weight,size,maxW,min){ let s=size; g.font=`${weight} ${s}px ${FONT}`; while(s>min&&g.measureText(txt).width>maxW){ s-=1; g.font=`${weight} ${s}px ${FONT}`; } return s; }
 function wrapLines(g,text,maxW){ const out=[]; let line=''; for(const wd of String(text).split(' ')){ const t=line?line+' '+wd:wd; if(g.measureText(t).width>maxW&&line){ out.push(line); line=wd; } else line=t; } if(line)out.push(line); return out; }
