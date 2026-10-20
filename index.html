@@ -232,7 +232,11 @@ function drawDoor(g,type,x,y,S,rot,small,flip){
     g.fillStyle='#111'; g.strokeStyle='#111'; g.lineWidth=Math.max(1,lw*0.6); const ay=-tw/2-Math.max(5,S*0.08);
     if(type==='door_slide'){ arrow(-S*0.1,ay,-S*0.38,ay); arrow(S*0.1,ay,S*0.38,ay); }
     else { arrow(-S*0.04,ay,-S*0.38,ay); arrow(S*0.04,ay,S*0.38,ay); }
-    if(!small){ g.font='italic '+Math.max(9,S*0.11)+'px sans-serif'; g.textAlign='center'; g.textBaseline='top'; g.fillStyle='#333'; g.fillText(type==='door_slide'?'Sliding door':'Auto door',0,tw/2+Math.max(3,S*0.04)); }
+    if(!small){ const d=tw/2+Math.max(4,S*0.05), r=(rot||0)*Math.PI/180, dx=-Math.sin(r)*d, dy=Math.cos(r)*d;
+      g.translate(0,d); if(flip) g.scale(-1,1); g.rotate(-r);   // 글자는 회전·반전과 상관없이 똑바로
+      g.font='bold '+Math.max(12,S*0.13)+'px "Malgun Gothic",sans-serif'; g.fillStyle='#222';
+      if(Math.abs(dy)>=Math.abs(dx)){ g.textAlign='center'; g.textBaseline=dy>0?'top':'bottom'; } else { g.textAlign=dx>0?'left':'right'; g.textBaseline='middle'; }
+      g.fillText(type==='door_slide'?'미닫이문':'자동문',0,0); }
   }
   g.restore(); }
 function roundRectPath(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
@@ -657,9 +661,10 @@ function drawLeftPanel(){ ctx.fillStyle='#fff'; ctx.fillRect(0,HEADER_H,LEFTW,H)
   if(theme!=='simple'){ ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(LEFTW,HEADER_H+4); ctx.lineTo(LEFTW,H-6); ctx.stroke(); }
   const x=16,w=LEFTW-30; let y=HEADER_H+16; const sc=theme==='simple'; y=drawStepList(ctx,'화재 시 피난요령','HOW TO EVACUATE IN CASE OF FIRE',FIRE_STEPS,x,y,w,sc?'#e3342b':null,sc?'#1f2d4a':null); y+=28;
   drawStepList(ctx,'소화기 사용요령','HOW TO USE A FIRE EXTINGUISHER',EXT_STEPS,x,y,w,sc?'#1e7d3c':null,sc?'#1e7d3c':null); }
-const LEG_ITEMS=[{kind:'route',label:'피난동선'},{type:'here'},{type:'exit'},{type:'fire_ext'},{type:'alarm'}];
+const LEG_ALL=[{kind:'route',label:'피난동선'},{type:'here'},{type:'exit'},{type:'fire_ext'},{type:'alarm'}];
+let LEG_ITEMS=LEG_ALL;
 function legLabel(it){ return it.kind==='route'?it.label:SYMBOLS[it.type].label; }
-function drawLegend(){
+function drawLegend(){ const used=new Set((state.symbols||[]).map(s=>s.type)); LEG_ITEMS=LEG_ALL.filter(it=>!it.type||it.type==='here'||it.type==='exit'||used.has(it.type));
   if(TH[theme].legend==='top'){
     const cy=HEADER_H+22; ctx.font='12px "Malgun Gothic",sans-serif';
     const iw=it=>22+ctx.measureText(legLabel(it)).width+18;
@@ -778,7 +783,7 @@ function proLegend(){ const R=proRegion(), x=R.cx, y=R.legY, w=R.cw, h=PRO.LGH;
   ctx.fillStyle=PRO.navy; ctx.beginPath(); ctx.roundRect(x,y,118,h,[10,0,0,10]); ctx.fill();
   ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=`800 17px ${FONT}`; ctx.fillText('범 례',x+59,y+24);
   ctx.font=`700 9.5px ${FONT}`; ctx.letterSpacing='2.5px'; ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillText('LEGEND',x+60,y+42); ctx.letterSpacing='0px';
-  const used=new Set((state.symbols||[]).map(s=>s.type)); const base=['here','exit','fire_ext','alarm'];
+  const used=new Set((state.symbols||[]).map(s=>s.type)); const base=['here','exit','fire_ext','alarm'].filter(t=>t==='here'||t==='exit'||used.has(t));
   const items=[{kind:'route',label:'피난동선'}, ...base.map(t=>({type:t})), ...Object.keys(SYMBOLS).filter(t=>!base.includes(t)&&used.has(t)&&!SYMBOLS[t].arch&&!['restroom','restroom_m','restroom_w','elevator'].includes(t)).map(t=>({type:t}))];   // 문·계단·화장실·엘리베이터는 범례에서 제외 (안전 표시만)
   const lab=it=>it.label||SYMBOLS[it.type].label; ctx.font=`700 14px ${FONT}`;
   const iw=it=>(it.kind==='route'?40:30)+8+ctx.measureText(lab(it)).width;
