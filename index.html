@@ -912,13 +912,10 @@ function proMapFrame(){ const R=proRegion(), fl=$('mFloor').value||'', bld=$('mB
   ctx.fillStyle='#fff'; ctx.beginPath(); ctx.roundRect(R.cx,R.cy,R.cw,PRO.CT-4,[12,12,0,0]); ctx.fill();
   ctx.strokeStyle='#e6eaf0'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(R.cx+14,R.cy+PRO.CT-4); ctx.lineTo(R.cx+R.cw-14,R.cy+PRO.CT-4); ctx.stroke();
   ctx.fillStyle=PRO.red; ctx.fillRect(R.cx+18,R.cy+12,5,17);
-  ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=PRO.ink; ctx.font=`800 15px ${FONT}`;
-  const ttl=[fl,bld].filter(Boolean).join(' ')+(fl||bld?' 평면도':'평면도'); ctx.fillText(ttl,R.cx+32,R.cy+21);
-  const t1=ctx.measureText(ttl).width; ctx.fillStyle=PRO.mute; ctx.font=`600 10px ${FONT}`; ctx.letterSpacing='1.5px'; ctx.fillText('FLOOR PLAN',R.cx+32+t1+10,R.cy+22); ctx.letterSpacing='0px';
-  ctx.textAlign='right'; ctx.fillStyle='#4a5466'; ctx.font=`600 13px ${FONT}`;
-  ctx.fillText('현재 위치를 확인하고 ',R.cx+R.cw-18-ctx.measureText('가장 가까운 비상구').width-ctx.measureText('로 대피하십시오.').width,R.cy+21);
-  const a=ctx.measureText('로 대피하십시오.').width; ctx.fillText('로 대피하십시오.',R.cx+R.cw-18,R.cy+21);
-  ctx.fillStyle=C.exitGreen; ctx.font=`800 13px ${FONT}`; ctx.fillText('가장 가까운 비상구',R.cx+R.cw-18-a,R.cy+21);
+  // 층·장소는 헤더에 있으니 중복 제목·영문(FLOOR PLAN) 빼고 대피 안내 한 줄만 크게
+  ctx.textAlign='left'; ctx.textBaseline='middle'; const ty=R.cy+21; let tx=R.cx+32;
+  const seg=[['현재 위치를 확인하고 ',PRO.ink,700],['가장 가까운 비상구',C.exitGreen,800],['로 대피하십시오.',PRO.ink,700]];
+  seg.forEach(([t,c,w])=>{ ctx.font=`${w} 16px ${FONT}`; ctx.fillStyle=c; ctx.fillText(t,tx,ty); tx+=ctx.measureText(t).width; });
   ctx.strokeStyle=PRO.line; ctx.lineWidth=1.2; rr(ctx,R.cx+.5,R.cy+.5,R.cw-1,R.ch-1,12); ctx.stroke(); }
 function proLegend(){ const R=proRegion(), x=R.cx, y=R.legY, w=R.cw, h=PRO.LGH;
   proCardBox(x,y,w,h);
