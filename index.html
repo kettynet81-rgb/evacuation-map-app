@@ -47,6 +47,7 @@
   .abtn.warn{color:#b42318;}
   .hint{font-size:11.5px;color:#7a8496;line-height:1.6;background:#f4f7fb;border:1px solid #e6ebf3;border-radius:9px;padding:9px 10px;}
   .row2{display:flex;gap:6px;} .row2 .abtn{flex:1;}
+  .abtn.on{background:#1f2d4a;color:#fff;border-color:#1f2d4a;font-weight:700;}
   input[type=file]{display:none;}
   select,.side input[type=text]{font:inherit;font-size:13px;padding:8px;border-radius:8px;border:1px solid #d9e0ea;width:100%;}
   .side input[type=range]{width:100%;accent-color:#2563eb;margin:2px 0 4px;}
@@ -164,6 +165,8 @@
     <button class="abtn" id="cloudList">☁ 서버에서 불러오기</button>
 
     <h2>내보내기 / 백업</h2>
+    <label class="cadlbl">출력 모양 (안내도 화면·PNG·인쇄 모두 적용)</label>
+    <div class="row2"><button class="abtn" id="v2d">▭ 일반 (평면)</button><button class="abtn" id="v3d">⬚ 입체</button></div>
     <button class="abtn pri" id="exportPng">🖼 안내도 PNG 저장</button>
     <button class="abtn" id="print">🖨 인쇄 / PDF</button>
     <div class="row2">
@@ -376,7 +379,15 @@ function contentBounds(){
   const pad=Math.max(maxX-minX,maxY-minY)*0.05+24; minX-=pad;minY-=pad;maxX+=pad;maxY+=pad;
   return {x:minX,y:minY,w:Math.max(1,maxX-minX),h:Math.max(1,maxY-minY)};
 }
+// ===== 입체(3D 느낌) 출력: 위에서 비스듬히 본 모양, 벽은 높이를 줘서 세움 =====
+let view3d=false; try{ view3d=localStorage.getItem('evac_view3d')==='1'; }catch(e){}
+const K3=0.7;                                   // 바닥 깊이 눌림 (비스듬한 시점)
+function is3d(){ return view3d&&viewMode==='poster'; }
+function wallH3(b){ return Math.max(22, Math.min(90, Math.max(b.w,b.h)*0.032)); }
+const DX3=0.38, DY3=0.92;   // 높이가 올라갈 때 화면에서 오른쪽·위로 (비스듬한 입체)
 function viewport(){
+  if(viewMode==='poster'&&view3d){ const b=contentBounds(), H3=wallH3(b), bb={x:b.x,y:b.y*K3-H3*DY3,w:b.w+H3*DX3,h:b.h*K3+H3*DY3};
+    const s=Math.min(REGW/bb.w,REGH/bb.h)*posterZoom; return {ox:REGX+(REGW-bb.w*s)/2-bb.x*s+posterPanX, oy:REGY+(REGH-bb.h*s)/2-bb.y*s+posterPanY, s, H3}; }
   if(viewMode==='poster'){ const b=contentBounds(); const s=Math.min(REGW/b.w,REGH/b.h)*posterZoom;
     return {ox:REGX+(REGW-b.w*s)/2-b.x*s+posterPanX, oy:REGY+(REGH-b.h*s)/2-b.y*s+posterPanY, s}; }
   const s=0.9*zoom;
@@ -699,7 +710,53 @@ function drawStair(a,b){ const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.ab
   for(let i=1;i<n;i++){ const t=i/n; ctx.beginPath();
     if(horiz){ ctx.moveTo(x+w*t,y); ctx.lineTo(x+w*t,y+h); } else { ctx.moveTo(x,y+h*t); ctx.lineTo(x+w,y+h*t); } ctx.stroke(); } }
 
+// 문 자리만큼 벽을 끊어서 조각으로
+function wallPieces3(){ const out=[]; const doors=state.symbols.filter(s=>SYMBOLS[s.type]&&SYMBOLS[s.type].arch);
+  state.walls.forEach(wl=>{ const P=dedupePts(wl.points), w=wl.w||7;
+    for(let j=0;j<P.length-1;j++){ const a=P[j],b=P[j+1], L=Math.hypot(b.x-a.x,b.y-a.y); if(L<0.5) continue; const ux=(b.x-a.x)/L, uy=(b.y-a.y)/L;
+      const cuts=[]; doors.forEach(d=>{ const r=(d.rot||0)*Math.PI/180, ax=Math.cos(r), ay=Math.sin(r), S=d.size||42;
+        if(Math.abs(ux*ay-uy*ax)>0.2) return; const cx=d.x-a.x, cy=d.y-a.y; if(Math.abs(ux*cy-uy*cx)>w/2+12) return;
+        const tc=ux*cx+uy*cy; if(tc<-S/2||tc>L+S/2) return; cuts.push([Math.max(0,tc-S/2),Math.min(L,tc+S/2)]); });
+      cuts.sort((p,q)=>p[0]-q[0]); let t=0; const segs=[];
+      cuts.forEach(([c0,c1])=>{ if(c0>t+0.5) segs.push([t,c0]); t=Math.max(t,c1); }); if(t<L-0.5) segs.push([t,L]);
+      segs.forEach(([t0,t1])=>{ const cap0=t0<0.5?w/2:0, cap1=t1>L-0.5?w/2:0;   // 모서리는 반 두께만큼 늘려 이음매 메움
+        out.push({a:{x:a.x+ux*(t0-cap0),y:a.y+uy*(t0-cap0)}, b:{x:a.x+ux*(t1+cap1),y:a.y+uy*(t1+cap1)}, ux,uy,w}); }); } });
+  return out; }
+function drawPlan3D(v){
+  const H3=v.H3||40, pr=(p,z)=>({x:p.x+(z||0)*DX3, y:p.y*K3-(z||0)*DY3});
+  // 1) 바닥층: 배경·닫힌 방 바닥·계단·문 (세로로 눌림)
+  ctx.save(); ctx.transform(1,0,0,K3,0,0);
+  if(bgImg){ const s=Math.min(PLANW/bgImg.width,PLANH/bgImg.height)*0.98; const dw=bgImg.width*s,dh=bgImg.height*s; ctx.globalAlpha=0.6; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
+  state.walls.forEach(wl=>{ const P=wl.points, n=P.length; if(n>3&&Math.hypot(P[0].x-P[n-1].x,P[0].y-P[n-1].y)<0.5){ ctx.fillStyle='#eef2f7'; ctx.beginPath(); ctx.moveTo(P[0].x,P[0].y); P.forEach(q=>ctx.lineTo(q.x,q.y)); ctx.closePath(); ctx.fill(); } });
+  (state.stairs||[]).forEach(st=>drawStair(st.a,st.b));
+  DOOR_BG='rgba(0,0,0,0)'; DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7);
+  state.symbols.forEach(sy=>{ if(SYMBOLS[sy.type]&&SYMBOLS[sy.type].arch) drawSymbol(ctx,sy.type,sy.x,sy.y,sy.size||42,false,sy.rot||0,sy.flip,sy.flipV); });
+  ctx.restore();
+  // 2) 벽 세우기 — 뒤(위쪽)부터 앞(아래쪽) 순서로
+  const boxes=wallPieces3().map(pc=>{ const nx=-pc.uy*pc.w/2, ny=pc.ux*pc.w/2;
+    const F=[{x:pc.a.x+nx,y:pc.a.y+ny},{x:pc.b.x+nx,y:pc.b.y+ny},{x:pc.b.x-nx,y:pc.b.y-ny},{x:pc.a.x-nx,y:pc.a.y-ny}];
+    const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4; return {F, key:cy*K3*DY3-cx*DX3*0.6}; }).sort((p,q)=>p.key-q.key);   // 먼 것(위·오른쪽)부터
+  const poly=(pts,fill,stroke)=>{ ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(q=>ctx.lineTo(q.x,q.y)); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=0.8/v.s; ctx.stroke(); } };
+  boxes.forEach(({F})=>{ // 바닥 그림자
+    poly(F.map(q=>pr({x:q.x+H3*0.25,y:q.y+H3*0.08},0)),'rgba(15,23,42,.08)'); });
+  boxes.forEach(({F})=>{ const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4;
+    for(let k=0;k<4;k++){ const p0=F[k], p1=F[(k+1)%4], mx=(p0.x+p1.x)/2-cx, my=(p0.y+p1.y)/2-cy, L=Math.hypot(mx,my)||1;
+      const vis=(my/L)*DY3-(mx/L)*DX3; if(vis<=0.01) continue;   // 보는 쪽(아래·왼쪽)을 향한 면만
+      const shade=(my/L)>0.7?'#cfd6df':'#aeb7c4';                // 앞면 밝게, 옆면 조금 어둡게
+      poly([pr(p0,0),pr(p1,0),pr(p1,H3),pr(p0,H3)],shade,'#8a94a3'); }
+    poly(F.map(q=>pr(q,H3)),'#3a4352','#262c36'); });                                             // 벽 윗면
+  // 3) 피난동선 — 바닥 위에, 벽보다 위로 그려서 항상 보이게
+  const lift=Math.min(6,H3*0.08);
+  state.routes.forEach(rt=>{ const ar=routeAr(rt); drawPolyline(rt.points.map(q=>pr(q,lift)),C.routeGreen,rt.w||8,ar!=='none',ar==='both'); });
+  // 4) 방 이름·심볼 — 똑바로 선 표지판처럼 (뒤에서 앞으로)
+  state.texts.forEach(t=>{ const fs=t.size||16, q=pr(t,lift); ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.75)'; ctx.fillRect(q.x-tw/2-4,q.y-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,q.x,q.y); });
+  state.symbols.filter(sy=>!(SYMBOLS[sy.type]&&SYMBOLS[sy.type].arch)).sort((p,q)=>p.y-q.y).forEach(sy=>{ const S=sy.size||42, q=pr(sy,0);
+    ctx.fillStyle='rgba(15,23,42,.18)'; ctx.beginPath(); ctx.ellipse(q.x,q.y,S*0.42,S*0.42*K3*0.45,0,0,7); ctx.fill();   // 바닥 그림자
+    drawSymbol(ctx,sy.type,q.x,q.y-S*0.55,S,true,sy.rot||0); });
+}
 function drawPlanContent(v){
+  if(is3d()){ ctx.save(); ctx.beginPath(); ctx.rect(REGX,REGY,REGW,REGH); ctx.clip(); ctx.translate(v.ox,v.oy); ctx.scale(v.s,v.s); drawPlan3D(v); ctx.restore(); return; }
   ctx.save();
   if(viewMode==='poster'){ ctx.beginPath(); ctx.rect(REGX,REGY,REGW,REGH); ctx.clip(); }
   else { ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip(); }
@@ -1035,7 +1092,12 @@ $('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:
 
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
 function renderPoster(mime,scale=2){ const prev=viewMode; viewMode='poster'; cv.width=W*scale; cv.height=H*scale; ctx.setTransform(scale,0,0,scale,0,0); draw(); const url=cv.toDataURL(mime||'image/png'); cv.width=W; cv.height=H; ctx.setTransform(1,0,0,1,0,0); viewMode=prev; draw(); return url; }
-$('exportPng').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}_${$('mFloor').value}.png`; a.href=renderPoster('image/png'); a.click(); });
+function setView3d(on){ view3d=!!on; try{ localStorage.setItem('evac_view3d',view3d?'1':'0'); }catch(e){}
+  $('v2d').classList.toggle('on',!view3d); $('v3d').classList.toggle('on',view3d); posterZoom=1; posterPanX=0; posterPanY=0;
+  if(viewMode!=='poster'&&$('modePoster')) $('modePoster').click(); draw(); statusMsg(view3d?'입체 모양으로 출력합니다':'일반(평면) 모양으로 출력합니다'); }
+$('v2d').addEventListener('click',()=>setView3d(false)); $('v3d').addEventListener('click',()=>setView3d(true));
+$('v2d').classList.toggle('on',!view3d); $('v3d').classList.toggle('on',view3d);
+$('exportPng').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}_${$('mFloor').value}${view3d?'_입체':''}.png`; a.href=renderPoster('image/png'); a.click(); });
 // 인쇄: 숨은 iframe + @page 여백 0 → 브라우저 머리글·바닥글(날짜·about:blank·1/1) 안 나옴
 $('print').addEventListener('click',()=>{ const img=renderPoster('image/png');
   const old=document.getElementById('printFrame'); if(old) old.remove();
