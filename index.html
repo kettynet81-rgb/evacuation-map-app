@@ -383,7 +383,7 @@ function contentBounds(){
 let view3d=false; try{ view3d=localStorage.getItem('evac_view3d')==='1'; }catch(e){}
 const K3=0.7;                                   // 바닥 깊이 눌림 (비스듬한 시점)
 function is3d(){ return view3d&&viewMode==='poster'; }
-function wallH3(b){ return Math.max(22, Math.min(90, Math.max(b.w,b.h)*0.032)); }
+function wallH3(b){ return Math.max(14, Math.min(56, Math.max(b.w,b.h)*0.022)); }   // 낮게: 평면이 읽히는 정도의 입체
 const DX3=0.38, DY3=0.92;   // 높이가 올라갈 때 화면에서 오른쪽·위로 (비스듬한 입체)
 function viewport(){
   if(viewMode==='poster'&&view3d){ const b=contentBounds(), H3=wallH3(b), bb={x:b.x,y:b.y*K3-H3*DY3,w:b.w+H3*DX3,h:b.h*K3+H3*DY3};
@@ -742,9 +742,9 @@ function drawPlan3D(v){
   boxes.forEach(({F})=>{ const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4;
     for(let k=0;k<4;k++){ const p0=F[k], p1=F[(k+1)%4], mx=(p0.x+p1.x)/2-cx, my=(p0.y+p1.y)/2-cy, L=Math.hypot(mx,my)||1;
       const vis=(my/L)*DY3-(mx/L)*DX3; if(vis<=0.01) continue;   // 보는 쪽(아래·왼쪽)을 향한 면만
-      const shade=(my/L)>0.7?'#cfd6df':'#aeb7c4';                // 앞면 밝게, 옆면 조금 어둡게
-      poly([pr(p0,0),pr(p1,0),pr(p1,H3),pr(p0,H3)],shade,'#8a94a3'); }
-    poly(F.map(q=>pr(q,H3)),'#3a4352','#262c36'); });                                             // 벽 윗면
+      const shade=(my/L)>0.7?'#e6eaf0':'#d2d8e0';                // 옆면은 아주 연하게 — 방·복도로 착각 안 되게
+      poly([pr(p0,0),pr(p1,0),pr(p1,H3),pr(p0,H3)],shade,'#b9c1cc'); }
+    poly(F.map(q=>pr(q,H3)),'#1f2430','#11151c'); });   // 윗면은 평면도 벽처럼 진하게                                             // 벽 윗면
   // 3) 피난동선 — 바닥 위에, 벽보다 위로 그려서 항상 보이게
   const lift=Math.min(6,H3*0.08);
   state.routes.forEach(rt=>{ const ar=routeAr(rt); drawPolyline(rt.points.map(q=>pr(q,lift)),C.routeGreen,rt.w||8,ar!=='none',ar==='both'); });
