@@ -166,7 +166,7 @@
 
     <h2>내보내기 / 백업</h2>
     <label class="cadlbl">출력 모양 (안내도 화면·PNG·인쇄 모두 적용)</label>
-    <div class="row2"><button class="abtn" id="v2d">▭ 일반 (평면)</button><button class="abtn" id="v3d">⬚ 입체</button></div>
+    <div class="row2"><button class="abtn" id="v2d">▭ 일반</button><button class="abtn" id="v3d">⬚ 입체 정면</button><button class="abtn" id="viso">◇ 입체 45°</button></div>
     <button class="abtn pri" id="exportPng">🖼 안내도 PNG 저장</button>
     <button class="abtn" id="print">🖨 인쇄 / PDF</button>
     <div class="row2">
@@ -380,13 +380,23 @@ function contentBounds(){
   return {x:minX,y:minY,w:Math.max(1,maxX-minX),h:Math.max(1,maxY-minY)};
 }
 // ===== 입체(3D 느낌) 출력: 위에서 비스듬히 본 모양, 벽은 높이를 줘서 세움 =====
-let view3d=false; try{ view3d=localStorage.getItem('evac_view3d')==='1'; }catch(e){}
+let view3d=false; try{ const v=localStorage.getItem('evac_view3d'); view3d=v==='1'||v==='front'?'front':v==='iso'?'iso':false; }catch(e){}
 const K3=0.7;                                   // 바닥 깊이 눌림 (비스듬한 시점)
 function is3d(){ return view3d&&viewMode==='poster'; }
 function wallH3(b){ return Math.max(14, Math.min(56, Math.max(b.w,b.h)*0.022)); }   // 낮게: 평면이 읽히는 정도의 입체
-const DX3=0.38, DY3=0.92;   // 높이가 올라갈 때 화면에서 오른쪽·위로 (비스듬한 입체)
+const DX3=0.38, DY3=0.92;   // 정면 입체: 높이가 올라갈 때 화면에서 오른쪽·위로
+const KI=0.58, CI=Math.SQRT1_2, SI=Math.SQRT1_2;   // 45° 입체: 평면을 45° 돌리고 세로로 눌러 내려다봄
+// 투영: 도면 좌표(x,y,높이z) → 화면(확대 전) 좌표
+function proj3(b){ const px=b.x+b.w/2, py=b.y+b.h/2;
+  if(view3d==='iso') return { pr:(p,z)=>{ const dx=p.x-px, dy=p.y-py; return {x:dx*CI-dy*SI, y:(dx*SI+dy*CI)*KI-(z||0)}; },
+      floor:[CI, KI*SI, -SI, KI*CI, -(CI*px-SI*py), -KI*(SI*px+CI*py)],
+      vis:(nx,ny)=>nx*SI+ny*CI, side:(nx,ny)=>nx*CI-ny*SI, depth:(x,y)=>(x-px)*SI+(y-py)*CI };
+  return { pr:(p,z)=>({x:p.x+(z||0)*DX3, y:p.y*K3-(z||0)*DY3}), floor:[1,0,0,K3,0,0],
+      vis:(nx,ny)=>ny*DY3-nx*DX3, side:(nx,ny)=>(Math.abs(ny)>0.7?0:nx), depth:(x,y)=>y*K3*DY3-x*DX3*0.6 }; }
 function viewport(){
-  if(viewMode==='poster'&&view3d){ const b=contentBounds(), H3=wallH3(b), bb={x:b.x,y:b.y*K3-H3*DY3,w:b.w+H3*DX3,h:b.h*K3+H3*DY3};
+  if(viewMode==='poster'&&view3d){ const b=contentBounds(), H3=wallH3(b), P=proj3(b); let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].forEach(([x,y])=>[0,H3].forEach(z=>{ const q=P.pr({x,y},z); x0=Math.min(x0,q.x); y0=Math.min(y0,q.y); x1=Math.max(x1,q.x); y1=Math.max(y1,q.y); }));
+    const bb={x:x0,y:y0,w:x1-x0,h:y1-y0};
     const s=Math.min(REGW/bb.w,REGH/bb.h)*posterZoom; return {ox:REGX+(REGW-bb.w*s)/2-bb.x*s+posterPanX, oy:REGY+(REGH-bb.h*s)/2-bb.y*s+posterPanY, s, H3}; }
   if(viewMode==='poster'){ const b=contentBounds(); const s=Math.min(REGW/b.w,REGH/b.h)*posterZoom;
     return {ox:REGX+(REGW-b.w*s)/2-b.x*s+posterPanX, oy:REGY+(REGH-b.h*s)/2-b.y*s+posterPanY, s}; }
@@ -722,12 +732,36 @@ function wallPieces3(){ const out=[]; const doors=state.symbols.filter(s=>SYMBOL
       segs.forEach(([t0,t1])=>{ const cap0=t0<0.5?w/2:0, cap1=t1>L-0.5?w/2:0;   // 모서리는 반 두께만큼 늘려 이음매 메움
         out.push({a:{x:a.x+ux*(t0-cap0),y:a.y+uy*(t0-cap0)}, b:{x:a.x+ux*(t1+cap1),y:a.y+uy*(t1+cap1)}, ux,uy,w}); }); } });
   return out; }
+// 건물 바닥 영역 자동 계산: 벽(문·출입구 틈은 메움)으로 막힌 안쪽을 바닥으로 칠함
+let floorCache=null;
+function floorMask(){ const b=contentBounds(); const key=JSON.stringify([state.walls,state.symbols.filter(s=>SYMBOLS[s.type]&&SYMBOLS[s.type].arch).map(s=>s.size),b]);
+  if(floorCache&&floorCache.key===key) return floorCache;
+  const doorMax=state.symbols.reduce((m,s)=>SYMBOLS[s.type]&&SYMBOLS[s.type].arch?Math.max(m,s.size||42):m,0);
+  const gap=Math.max(120,doorMax*1.1), M=gap+40;                 // 가장자리 여유 (메운 벽이 테두리에 닿지 않게)
+  const res=Math.max(b.w,b.h)/700, ox0=b.x-M, oy0=b.y-M, Wd=Math.ceil((b.w+2*M)/res)+2, Hd=Math.ceil((b.h+2*M)/res)+2, rpx=Math.ceil(gap/2/res);
+  const oc=document.createElement('canvas'); oc.width=Wd; oc.height=Hd; const g=oc.getContext('2d');
+  g.strokeStyle='#000'; g.lineCap='round'; g.lineJoin='round';
+  state.walls.forEach(wl=>{ g.lineWidth=((wl.w||7)+gap)/res; g.beginPath(); wl.points.forEach((q,k)=>{ const x=(q.x-ox0)/res+1, y=(q.y-oy0)/res+1; k?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke(); });
+  const d=g.getImageData(0,0,Wd,Hd).data, N=Wd*Hd, wall=new Uint8Array(N); for(let i=0;i<N;i++) wall[i]=d[i*4+3]>40?1:0;
+  // 바깥에서 물 채우기
+  const out=new Uint8Array(N), qd=new Int32Array(N); let h=0,t=0;
+  const push=i=>{ if(!out[i]&&!wall[i]){ out[i]=1; qd[t++]=i; } };
+  for(let x=0;x<Wd;x++){ push(x); push((Hd-1)*Wd+x); } for(let y=0;y<Hd;y++){ push(y*Wd); push(y*Wd+Wd-1); }
+  while(h<t){ const i=qd[h++], x=i%Wd, y=(i/Wd)|0; if(x>0)push(i-1); if(x<Wd-1)push(i+1); if(y>0)push(i-Wd); if(y<Hd-1)push(i+Wd); }
+  // 메운 만큼 다시 깎기 (바깥에서의 거리 > 반폭 인 곳만 바닥)
+  const dist=new Int32Array(N).fill(-1); h=0; t=0; for(let i=0;i<N;i++) if(out[i]){ dist[i]=0; qd[t++]=i; }
+  while(h<t){ const i=qd[h++], x=i%Wd, y=(i/Wd)|0, nd=dist[i]+1; if(nd>rpx) continue;
+    const nb=[x>0?i-1:-1,x<Wd-1?i+1:-1,y>0?i-Wd:-1,y<Hd-1?i+Wd:-1]; nb.forEach(j=>{ if(j>=0&&dist[j]<0){ dist[j]=nd; qd[t++]=j; } }); }
+  const img=g.createImageData(Wd,Hd), px=img.data; let any=false;
+  for(let i=0;i<N;i++) if(!out[i]&&(dist[i]<0||dist[i]>=rpx)){ px[i*4]=226; px[i*4+1]=232; px[i*4+2]=240; px[i*4+3]=255; any=true; }
+  g.clearRect(0,0,Wd,Hd); g.putImageData(img,0,0);
+  floorCache={key,canvas:oc,x:ox0-res,y:oy0-res,res,any}; return floorCache; }
 function drawPlan3D(v){
-  const H3=v.H3||40, pr=(p,z)=>({x:p.x+(z||0)*DX3, y:p.y*K3-(z||0)*DY3});
+  const H3=v.H3||40, P=proj3(contentBounds()), pr=P.pr;
   // 1) 바닥층: 배경·닫힌 방 바닥·계단·문 (세로로 눌림)
-  ctx.save(); ctx.transform(1,0,0,K3,0,0);
+  ctx.save(); ctx.transform(...P.floor);
   if(bgImg){ const s=Math.min(PLANW/bgImg.width,PLANH/bgImg.height)*0.98; const dw=bgImg.width*s,dh=bgImg.height*s; ctx.globalAlpha=0.6; ctx.drawImage(bgImg,(PLANW-dw)/2,(PLANH-dh)/2,dw,dh); ctx.globalAlpha=1; }
-  state.walls.forEach(wl=>{ const P=wl.points, n=P.length; if(n>3&&Math.hypot(P[0].x-P[n-1].x,P[0].y-P[n-1].y)<0.5){ ctx.fillStyle='#eef2f7'; ctx.beginPath(); ctx.moveTo(P[0].x,P[0].y); P.forEach(q=>ctx.lineTo(q.x,q.y)); ctx.closePath(); ctx.fill(); } });
+  { const fm=floorMask(); if(fm.any){ ctx.imageSmoothingEnabled=true; ctx.drawImage(fm.canvas,fm.x,fm.y,fm.canvas.width*fm.res,fm.canvas.height*fm.res); } }   // 건물 바닥색
   (state.stairs||[]).forEach(st=>drawStair(st.a,st.b));
   DOOR_BG='rgba(0,0,0,0)'; DOOR_WALL=state.walls.reduce((m,w)=>Math.max(m,w.w||7),7);
   state.symbols.forEach(sy=>{ if(SYMBOLS[sy.type]&&SYMBOLS[sy.type].arch) drawSymbol(ctx,sy.type,sy.x,sy.y,sy.size||42,false,sy.rot||0,sy.flip,sy.flipV); });
@@ -735,14 +769,14 @@ function drawPlan3D(v){
   // 2) 벽 세우기 — 뒤(위쪽)부터 앞(아래쪽) 순서로
   const boxes=wallPieces3().map(pc=>{ const nx=-pc.uy*pc.w/2, ny=pc.ux*pc.w/2;
     const F=[{x:pc.a.x+nx,y:pc.a.y+ny},{x:pc.b.x+nx,y:pc.b.y+ny},{x:pc.b.x-nx,y:pc.b.y-ny},{x:pc.a.x-nx,y:pc.a.y-ny}];
-    const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4; return {F, key:cy*K3*DY3-cx*DX3*0.6}; }).sort((p,q)=>p.key-q.key);   // 먼 것(위·오른쪽)부터
+    const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4; return {F, key:P.depth(cx,cy)}; }).sort((p,q)=>p.key-q.key);   // 먼 것부터
   const poly=(pts,fill,stroke)=>{ ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(q=>ctx.lineTo(q.x,q.y)); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=0.8/v.s; ctx.stroke(); } };
   boxes.forEach(({F})=>{ // 바닥 그림자
-    poly(F.map(q=>pr({x:q.x+H3*0.25,y:q.y+H3*0.08},0)),'rgba(15,23,42,.08)'); });
+    poly(F.map(q=>pr({x:q.x+H3*0.25,y:q.y+H3*0.25},0)),'rgba(15,23,42,.08)'); });
   boxes.forEach(({F})=>{ const cx=F.reduce((a,q)=>a+q.x,0)/4, cy=F.reduce((a,q)=>a+q.y,0)/4;
     for(let k=0;k<4;k++){ const p0=F[k], p1=F[(k+1)%4], mx=(p0.x+p1.x)/2-cx, my=(p0.y+p1.y)/2-cy, L=Math.hypot(mx,my)||1;
-      const vis=(my/L)*DY3-(mx/L)*DX3; if(vis<=0.01) continue;   // 보는 쪽(아래·왼쪽)을 향한 면만
-      const shade=(my/L)>0.7?'#e6eaf0':'#d2d8e0';                // 옆면은 아주 연하게 — 방·복도로 착각 안 되게
+      const vis=P.vis(mx/L,my/L); if(vis<=0.01) continue;   // 보는 쪽을 향한 면만
+      const shade=P.side(mx/L,my/L)<0?'#e6eaf0':P.side(mx/L,my/L)>0?'#d2d8e0':'#e6eaf0';                // 옆면은 아주 연하게 — 방·복도로 착각 안 되게
       poly([pr(p0,0),pr(p1,0),pr(p1,H3),pr(p0,H3)],shade,'#b9c1cc'); }
     poly(F.map(q=>pr(q,H3)),'#1f2430','#11151c'); });   // 윗면은 평면도 벽처럼 진하게                                             // 벽 윗면
   // 3) 피난동선 — 바닥 위에, 벽보다 위로 그려서 항상 보이게
@@ -751,8 +785,8 @@ function drawPlan3D(v){
   // 4) 방 이름·심볼 — 똑바로 선 표지판처럼 (뒤에서 앞으로)
   state.texts.forEach(t=>{ const fs=t.size||16, q=pr(t,lift); ctx.font='bold '+fs+'px "Malgun Gothic",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     const tw=ctx.measureText(t.text).width; ctx.fillStyle='rgba(255,255,255,.75)'; ctx.fillRect(q.x-tw/2-4,q.y-fs*0.7,tw+8,fs*1.4); ctx.fillStyle='#111'; ctx.fillText(t.text,q.x,q.y); });
-  state.symbols.filter(sy=>!(SYMBOLS[sy.type]&&SYMBOLS[sy.type].arch)).sort((p,q)=>p.y-q.y).forEach(sy=>{ const S=sy.size||42, q=pr(sy,0);
-    ctx.fillStyle='rgba(15,23,42,.18)'; ctx.beginPath(); ctx.ellipse(q.x,q.y,S*0.42,S*0.42*K3*0.45,0,0,7); ctx.fill();   // 바닥 그림자
+  state.symbols.filter(sy=>!(SYMBOLS[sy.type]&&SYMBOLS[sy.type].arch)).sort((p,q)=>P.depth(p.x,p.y)-P.depth(q.x,q.y)).forEach(sy=>{ const S=sy.size||42, q=pr(sy,0);
+    ctx.fillStyle='rgba(15,23,42,.18)'; ctx.beginPath(); ctx.ellipse(q.x,q.y,S*0.42,S*0.42*0.32,0,0,7); ctx.fill();   // 바닥 그림자
     drawSymbol(ctx,sy.type,q.x,q.y-S*0.55,S,true,sy.rot||0); });
 }
 function drawPlanContent(v){
@@ -1092,12 +1126,13 @@ $('clearAll').addEventListener('click',()=>{ snapshot(); state={walls:[],routes:
 
 // 내보내기는 항상 완성된 안내도(poster)로 렌더
 function renderPoster(mime,scale=2){ const prev=viewMode; viewMode='poster'; cv.width=W*scale; cv.height=H*scale; ctx.setTransform(scale,0,0,scale,0,0); draw(); const url=cv.toDataURL(mime||'image/png'); cv.width=W; cv.height=H; ctx.setTransform(1,0,0,1,0,0); viewMode=prev; draw(); return url; }
-function setView3d(on){ view3d=!!on; try{ localStorage.setItem('evac_view3d',view3d?'1':'0'); }catch(e){}
-  $('v2d').classList.toggle('on',!view3d); $('v3d').classList.toggle('on',view3d); posterZoom=1; posterPanX=0; posterPanY=0;
-  if(viewMode!=='poster'&&$('modePoster')) $('modePoster').click(); draw(); statusMsg(view3d?'입체 모양으로 출력합니다':'일반(평면) 모양으로 출력합니다'); }
-$('v2d').addEventListener('click',()=>setView3d(false)); $('v3d').addEventListener('click',()=>setView3d(true));
-$('v2d').classList.toggle('on',!view3d); $('v3d').classList.toggle('on',view3d);
-$('exportPng').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}_${$('mFloor').value}${view3d?'_입체':''}.png`; a.href=renderPoster('image/png'); a.click(); });
+function syncViewBtns(){ $('v2d').classList.toggle('on',!view3d); $('v3d').classList.toggle('on',view3d==='front'); $('viso').classList.toggle('on',view3d==='iso'); }
+function setView3d(m){ view3d=m||false; try{ localStorage.setItem('evac_view3d',view3d||'0'); }catch(e){}
+  syncViewBtns(); posterZoom=1; posterPanX=0; posterPanY=0;
+  if(viewMode!=='poster'&&$('modePoster')) $('modePoster').click(); draw(); statusMsg(view3d==='iso'?'입체 45°로 출력합니다':view3d?'입체(정면)로 출력합니다':'일반(평면)으로 출력합니다'); }
+$('v2d').addEventListener('click',()=>setView3d(false)); $('v3d').addEventListener('click',()=>setView3d('front')); $('viso').addEventListener('click',()=>setView3d('iso'));
+syncViewBtns();
+$('exportPng').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=`피난안내도_${$('mBld').value}_${$('mFloor').value}${view3d==='iso'?'_입체45':view3d?'_입체':''}.png`; a.href=renderPoster('image/png'); a.click(); });
 // 인쇄: 숨은 iframe + @page 여백 0 → 브라우저 머리글·바닥글(날짜·about:blank·1/1) 안 나옴
 $('print').addEventListener('click',()=>{ const img=renderPoster('image/png');
   const old=document.getElementById('printFrame'); if(old) old.remove();
